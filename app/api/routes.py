@@ -64,7 +64,7 @@ async def upload_image(file: UploadFile = File(...)):
             content={
                 "code": 0,
                 "data": {
-                    "filename": original_filename,
+                    "fileName": original_filename,
                     "fileUrl": "https://static.kalaisai.com/extra-images/" + original_filename
                 },
                 "message": "图片上传成功"

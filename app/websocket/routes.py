@@ -28,9 +28,6 @@ audio_buffers = {}
 # 录音会话标识
 recording_sessions = {}
 
-# 初始化OpenAI客户端
-openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
 # 对话历史
 conversation_history = []
 

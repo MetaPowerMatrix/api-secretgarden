@@ -62,9 +62,12 @@ async def upload_image(file: UploadFile = File(...)):
         return JSONResponse(
             status_code=200,
             content={
-                "message": "图片上传成功",
-                "filename": original_filename,
-                "path": file_path
+                "code": 0,
+                "data": {
+                    "filename": original_filename,
+                    "fileUrl": file_path
+                },
+                "message": "图片上传成功"
             }
         )
     except Exception as e:

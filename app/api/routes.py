@@ -1,6 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Dict, Any
+import os
+from fastapi.responses import JSONResponse
+from app.config import settings
+import shutil
+from datetime import datetime
 
 router = APIRouter()
 
@@ -32,4 +37,37 @@ async def get_message(message_id: str) -> Dict[str, Any]:
         "id": message_id,
         "content": "示例消息内容",
         "created_at": "2023-10-28T12:00:00Z"
-    } 
+    }
+
+@router.post("/upload/image")
+async def upload_image(file: UploadFile = File(...)):
+    """
+    上传图片文件
+    """
+    try:
+        # 检查文件类型
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="只允许上传图片文件")
+
+        # 使用原始文件名
+        original_filename = file.filename
+        
+        # 完整的文件路径
+        file_path = os.path.join(settings.IMAGE_STORAGE_DIR, original_filename)
+        
+        # 保存文件
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": "图片上传成功",
+                "filename": original_filename,
+                "path": file_path
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
+    finally:
+        file.file.close() 

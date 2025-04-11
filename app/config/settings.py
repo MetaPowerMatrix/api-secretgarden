@@ -40,3 +40,9 @@ os.makedirs(PROCESSED_DIR, exist_ok=True)
 ESP32_SAMPLE_RATE = int(os.getenv("ESP32_SAMPLE_RATE", 44100))  # ESP32使用的采样率，需匹配ESP32的I2S配置
 ESP32_CHANNELS = int(os.getenv("ESP32_CHANNELS", 1))            # 单声道
 ESP32_SAMPLE_WIDTH = int(os.getenv("ESP32_SAMPLE_WIDTH", 2))    # 16位
+
+# 图片存储配置
+IMAGE_STORAGE_DIR = os.getenv("IMAGE_STORAGE_DIR", "/data/www/xfiles/extra-images")
+
+# 确保图片存储目录存在
+os.makedirs(IMAGE_STORAGE_DIR, exist_ok=True)

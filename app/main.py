@@ -16,6 +16,10 @@ from app.services import init_services
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(),  # 输出到控制台
+        logging.FileHandler('app.log')  # 输出到文件
+    ]
 )
 logger = logging.getLogger(__name__)
 

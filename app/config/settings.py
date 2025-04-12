@@ -24,9 +24,12 @@ WEBSOCKET_PATH = "/ws"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
+# 数据存储目录
+DATA_DIR = os.getenv("DATA_DIR", "/data/www/xfiles/data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
 # 音频处理配置
 # 存储音频和IMU数据的目录
-DATA_DIR = os.getenv("DATA_DIR", "esp32_data")
 AUDIO_DIR = os.path.join(DATA_DIR, "audio")
 IMU_DIR = os.path.join(DATA_DIR, "imu")
 PROCESSED_DIR = os.path.join(DATA_DIR, "processed")

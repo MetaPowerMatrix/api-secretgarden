@@ -1,16 +1,29 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import os
 from fastapi.responses import JSONResponse
 from app.config import settings
 import shutil
 from datetime import datetime
+import json
+import logging
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 class Message(BaseModel):
     content: str
+
+class JDAuthToken(BaseModel):
+    token: str
+    expires_in: int
+    time: int
+    uid: str
+    user_nick: str
+    venderId: str
 
 @router.get("/health")
 async def health_check() -> Dict[str, str]:
@@ -73,4 +86,43 @@ async def upload_image(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
     finally:
-        file.file.close() 
+        file.file.close()
+
+@router.post("/jd/auth/callback")
+async def jd_auth_callback(token: str = Form(...)):
+    """
+    接收京东授权码的回调接口
+    """
+    try:
+        logger.info(f"收到京东授权回调请求，原始token数据: {token}")
+        
+        # 解析token字符串为JSON对象
+        token_data = json.loads(token)
+        logger.info(f"解析后的token数据: {json.dumps(token_data, ensure_ascii=False, indent=2)}")
+        
+        # 验证数据格式
+        auth_token = JDAuthToken(**token_data)
+        logger.info(f"数据验证通过，token信息: 用户={auth_token.user_nick}, 商家ID={auth_token.venderId}, 有效期={auth_token.expires_in}秒")
+        
+        # 存储授权信息
+        storage_path = os.path.join(settings.DATA_DIR, "jd_auth.json")
+        logger.info(f"准备将授权信息保存到文件: {storage_path}")
+        
+        with open(storage_path, "w", encoding="utf-8") as f:
+            json.dump(token_data, f, ensure_ascii=False, indent=2)
+        logger.info("授权信息保存成功")
+        
+        response = {
+            "code": "0",
+            "msg": "success",
+            "data": ""
+        }
+        logger.info(f"返回响应: {json.dumps(response, ensure_ascii=False)}")
+        
+        return response
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON解析错误: {str(e)}")
+        raise HTTPException(status_code=400, detail="无效的token格式")
+    except Exception as e:
+        logger.error(f"处理授权码时出错: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"处理授权码时出错: {str(e)}") 

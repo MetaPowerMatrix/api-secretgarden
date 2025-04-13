@@ -64,12 +64,21 @@ class JDDJCategoryTool:
         try:
             # 系统级参数
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            params = {
+            system_params = {
                 "token": token,
                 "app_key": self.app_key,
                 "timestamp": timestamp,
                 "format": "json",
-                "v": "1.0",
+                "v": "1.0"
+            }
+            
+            # 生成签名（只使用系统级参数）
+            sign = self.generate_sign(system_params)
+            
+            # 完整的请求参数
+            params = {
+                **system_params,
+                "sign": sign,
                 # 应用级参数
                 "id": parent_id,
                 "fields": json.dumps([
@@ -77,9 +86,6 @@ class JDDJCategoryTool:
                     "CHECK_UPC_STATUS", "WEIGHT_MARK", "PACKAGE_FEE_MARK", "LEAF"
                 ])
             }
-            
-            # 生成签名
-            params["sign"] = self.generate_sign(params)
             
             logger.info(f"请求参数: {json.dumps(params, ensure_ascii=False)}")
             response = requests.get(self.base_url, params=params)

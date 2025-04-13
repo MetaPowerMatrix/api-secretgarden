@@ -106,10 +106,10 @@ class JDDJCategoryTool:
                 "format": "json",
                 "v": "1.0",
                 # 应用级参数
-                "fields": json.dumps([
+                "jd_param_json": json.dumps({"id": parent_id, "fields": [
                     "ID", "CATEGORY_NAME", "CATEGORY_LEVEL",
                     "CHECK_UPC_STATUS", "WEIGHT_MARK", "PACKAGE_FEE_MARK", "LEAF"
-                ])
+                ]})
             }
             
             # 生成签名（只使用系统级参数）

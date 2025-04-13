@@ -62,14 +62,19 @@ class JDDJCategoryTool:
             return []
 
         try:
-            # 系统级参数
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             system_params = {
+                # 系统级参数
                 "token": token,
                 "app_key": self.app_key,
                 "timestamp": timestamp,
                 "format": "json",
-                "v": "1.0"
+                "v": "1.0",
+                # 应用级参数
+                "jd_param_json": json.dumps({"id": parent_id, "fields": [
+                    "ID", "CATEGORY_NAME", "CATEGORY_LEVEL",
+                    "CHECK_UPC_STATUS", "WEIGHT_MARK", "PACKAGE_FEE_MARK", "LEAF"
+                ]})
             }
             
             # 生成签名（只使用系统级参数）
@@ -79,11 +84,6 @@ class JDDJCategoryTool:
             params = {
                 **system_params,
                 "sign": sign,
-                # 应用级参数
-                "jd_param_json": json.dumps({"id": parent_id, "fields": [
-                    "ID", "CATEGORY_NAME", "CATEGORY_LEVEL",
-                    "CHECK_UPC_STATUS", "WEIGHT_MARK", "PACKAGE_FEE_MARK", "LEAF"
-                ]})
             }
             
             logger.info(f"请求参数: {json.dumps(params, ensure_ascii=False)}")

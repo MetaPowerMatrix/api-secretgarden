@@ -55,7 +55,7 @@ class JDDJCategoryTool:
         # MD5加密
         return hashlib.md5(sign_str.encode('utf-8')).hexdigest().upper()
 
-    def get_categories(self, parent_id: int = 0, level: int = 1) -> List[Dict]:
+    def get_categories(self, parent_id: int = 0, level: int = 1, call_times: int = 0) -> List[Dict]:
         """获取指定父级ID下的子类目"""
         token = self.load_token()
         if not token:
@@ -102,18 +102,17 @@ class JDDJCategoryTool:
             logger.info(f"获取到{level}级类目数量: {len(categories)}")
             
             time.sleep(60)
-            i = 0
             # 递归获取子类目
             for category in categories:
                 if level < 5 and category.get("leaf") != 1:  # 最多获取5级类目，且不是末级类目
                     category["children"] = self.get_categories(
                         category.get("id", 0),
-                        level + 1
+                        level + 1,
+                        call_times + 1
                     )
-                i += 1
-                if i > 45:
+                if call_times > 45:
                     time.sleep(60)
-                    i = 0
+                    call_times = 0
                     
             return categories
             

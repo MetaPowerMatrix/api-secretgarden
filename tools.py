@@ -101,6 +101,7 @@ class JDDJCategoryTool:
             categories = result.get("data", {}).get("result", [])
             logger.info(f"获取到{level}级类目数量: {len(categories)}")
             
+            time.sleep(60)
             # 递归获取子类目
             for category in categories:
                 if level < 5 and category.get("leaf") != 1:  # 最多获取5级类目，且不是末级类目
@@ -108,6 +109,7 @@ class JDDJCategoryTool:
                         category.get("id", 0),
                         level + 1
                     )
+                time.sleep(60)
                     
             return categories
             

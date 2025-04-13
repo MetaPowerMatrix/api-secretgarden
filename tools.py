@@ -132,8 +132,8 @@ class JDDJCategoryTool:
                 logger.error(f"获取类目失败: {result.get('msg')}")
                 return []
                 
-            # 提取类目数据
-            categories = result.get("data", {}).get("result", [])
+            # 提取类目数据, parse data field for json
+            categories = json.loads(result.get("data", {})).get("result", [])
             logger.info(f"获取到{level}级类目数量: {len(categories)}")
             
             # 递归获取子类目

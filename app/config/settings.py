@@ -21,7 +21,6 @@ API_PREFIX = "/api/v1"
 WEBSOCKET_PATH = "/ws"
 
 # API密钥配置
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
 # 数据存储目录
@@ -49,3 +48,7 @@ IMAGE_STORAGE_DIR = os.getenv("IMAGE_STORAGE_DIR", "/data/www/xfiles/extra-image
 
 # 确保图片存储目录存在
 os.makedirs(IMAGE_STORAGE_DIR, exist_ok=True)
+
+JD_OPENAPI_URL = os.getenv("JD_OPENAPI_URL", "")
+JD_APP_KEY = os.getenv("JD_APP_KEY", "")
+JD_APP_SECRET = os.getenv("JD_APP_SECRET", "")

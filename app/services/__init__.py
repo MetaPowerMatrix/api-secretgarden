@@ -17,10 +17,6 @@ def init_services():
 
         logger.info("服务目录初始化完成")
         
-        # 检查API密钥是否配置
-        if not settings.OPENAI_API_KEY:
-            logger.warning("未配置OpenAI API密钥，语音识别功能将不可用")
-        
         if not settings.DEEPSEEK_API_KEY:
             logger.warning("未配置DeepSeek API密钥，大模型对话功能将不可用")
         

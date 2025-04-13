@@ -80,11 +80,10 @@ class JDDJCategoryTool:
                 **system_params,
                 "sign": sign,
                 # 应用级参数
-                "id": parent_id,
-                "fields": json.dumps([
+                "jd_param_json": json.dumps({"id": parent_id, "fields": [
                     "ID", "CATEGORY_NAME", "CATEGORY_LEVEL",
                     "CHECK_UPC_STATUS", "WEIGHT_MARK", "PACKAGE_FEE_MARK", "LEAF"
-                ])
+                ]})
             }
             
             logger.info(f"请求参数: {json.dumps(params, ensure_ascii=False)}")

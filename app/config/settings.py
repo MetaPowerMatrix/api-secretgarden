@@ -24,7 +24,7 @@ WEBSOCKET_PATH = "/ws"
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
 # 数据存储目录
-DATA_DIR = os.getenv("DATA_DIR", "/data/www/xfiles/data")
+DATA_DIR = os.getenv("DATA_DIR", "/data/app/")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # 音频处理配置

@@ -105,7 +105,7 @@ async def jd_auth_callback(token: str = Form(...)):
         print(f"数据验证通过，token信息: 用户={auth_token.user_nick}, 商家ID={auth_token.venderId}, 有效期={auth_token.expires_in}秒")
         
         # 存储授权信息
-        storage_path = os.path.join(settings.DATA_DIR, "jd_auth.json")
+        storage_path = os.path.join(settings.DATA_DIR, "jd/jd_auth.json")
         print(f"准备将授权信息保存到文件: {storage_path}")
         
         with open(storage_path, "w", encoding="utf-8") as f:

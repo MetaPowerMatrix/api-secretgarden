@@ -10,3 +10,5 @@ __pycache__/
 
 .env_private
 .env
+database_export.json
+category.json

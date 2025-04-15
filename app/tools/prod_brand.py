@@ -140,7 +140,7 @@ class JDDJProductBrandClassifier:
                 logger.error(f"获取商品品牌信息失败: {result.get('msg')}")
                 return None
             
-            brand_data = result.get("data", {}).get("result", {})
+            brand_data = json.loads(result.get("data", {})).get("result", {})
             logger.info(f"获取到商品 '{product_name}' 的品牌信息")
             
             return brand_data

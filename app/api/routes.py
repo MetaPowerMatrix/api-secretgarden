@@ -382,5 +382,150 @@ async def upload_product_to_jd(request: ProductUploadRequest):
         # 直接抛出HTTP异常
         raise e
     except Exception as e:
-        logger.error(f"上传商品时出错: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"上传商品时出错: {str(e)}")
+        import sys
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        line_number = exc_tb.tb_lineno
+        logger.error(f"上传商品时出错: {str(e)}, 出错行号: {line_number}")
+        raise HTTPException(status_code=500, detail=f"上传商品时出错: {str(e)}, 出错行号: {line_number}")
+
+class ProductUpdateRequest(BaseModel):
+    product_id: str
+    update_fields: Dict[str, Any]
+
+@router.post("/jd/product/update")
+async def update_product_on_jd(request: ProductUpdateRequest):
+    """
+    更新京东到家平台商品信息
+    """
+    try:
+        logger.info(f"开始更新商品: {request.product_id}, 更新字段: {request.update_fields}")
+        
+        # 检查上传记录，获取skuId
+        upload_log_file = os.path.join(settings.DATA_DIR, "jd/upload_log.json")
+        if not os.path.exists(upload_log_file):
+            raise HTTPException(status_code=400, detail="未找到商品上传记录，请先上传商品")
+            
+        with open(upload_log_file, "r", encoding="utf-8") as f:
+            upload_logs = json.load(f)
+        
+        # 查找商品记录
+        product_log = None
+        for log in upload_logs:
+            if log.get("product_id") == request.product_id:
+                product_log = log
+                break
+                
+        if not product_log:
+            raise HTTPException(status_code=404, detail=f"未找到商品 {request.product_id} 的上传记录，请先上传商品")
+        
+        # 获取outSkuId
+        out_sku_id = product_log.get("out_sku_id", request.product_id)
+        
+        # 加载token
+        token_file = os.path.join(settings.DATA_DIR, "jd/jd_auth.json")
+        if not os.path.exists(token_file):
+            raise HTTPException(status_code=400, detail="京东授权Token不存在")
+            
+        with open(token_file, "r", encoding="utf-8") as f:
+            token_data = json.load(f)
+            token = token_data.get("token")
+            
+        if not token:
+            raise HTTPException(status_code=400, detail="无效的京东授权Token")
+        
+        # 京东API配置
+        jd_api_url = "https://openapi.jddj.com/djapi/pms/updateSku"
+        app_key = os.getenv("JDDJ_APP_KEY")
+        app_secret = os.getenv("JDDJ_APP_SECRET")
+        
+        if not app_key or not app_secret:
+            raise HTTPException(status_code=500, detail="缺少API配置")
+        
+        # 生成唯一的traceId
+        trace_id = str(uuid.uuid4()).replace("-", "")
+        
+        # 构建应用级参数
+        app_params = {
+            "traceId": trace_id,
+            "outSkuId": out_sku_id,
+        }
+        
+        # 添加更新字段
+        for key, value in request.update_fields.items():
+            # 特殊处理价格字段，需要转换为分
+            if key == "skuPrice" and isinstance(value, (int, float, str)):
+                try:
+                    app_params[key] = int(float(value) * 100)
+                except:
+                    app_params[key] = value
+            else:
+                app_params[key] = value
+        
+        # 构建系统级参数
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        system_params = {
+            "token": token,
+            "app_key": app_key,
+            "timestamp": timestamp,
+            "format": "json",
+            "v": "1.0",
+            "jd_param_json": json.dumps(app_params)
+        }
+        
+        # 生成签名
+        def generate_sign(params):
+            sorted_params = sorted(params.items())
+            param_str = "".join([f"{k}{v}" for k, v in sorted_params])
+            sign_str = f"{app_secret}{param_str}{app_secret}"
+            return hashlib.md5(sign_str.encode('utf-8')).hexdigest().upper()
+        
+        sign = generate_sign(system_params)
+        
+        # 完整请求参数
+        params = {
+            **system_params,
+            "sign": sign,
+        }
+        
+        logger.info(f"请求参数: {json.dumps(params, ensure_ascii=False)}")
+        
+        # 发送请求
+        response = requests.get(jd_api_url, params=params)
+        result = response.json()
+        
+        logger.info(f"京东接口返回: {json.dumps(result, ensure_ascii=False)}")
+        
+        if result.get("code") != "0":
+            return {
+                "code": result.get("code", "-1"),
+                "message": result.get("msg", "更新失败"),
+                "data": None
+            }
+        
+        # 更新上传记录
+        product_log["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        product_log["update_fields"] = request.update_fields
+        
+        # 保存更新后的记录
+        with open(upload_log_file, "w", encoding="utf-8") as f:
+            json.dump(upload_logs, f, ensure_ascii=False, indent=2)
+            
+        return {
+            "code": "0",
+            "message": "商品更新成功",
+            "data": {
+                "sku_id": result.get("data", {}).get("result", {}).get("skuId"),
+                "out_sku_id": out_sku_id,
+                "updated_fields": list(request.update_fields.keys())
+            }
+        }
+        
+    except HTTPException as e:
+        # 直接抛出HTTP异常
+        raise e
+    except Exception as e:
+        import sys
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        line_number = exc_tb.tb_lineno
+        logger.error(f"更新商品时出错: {str(e)}, 出错行号: {line_number}")
+        raise HTTPException(status_code=500, detail=f"更新商品时出错: {str(e)}, 出错行号: {line_number}")

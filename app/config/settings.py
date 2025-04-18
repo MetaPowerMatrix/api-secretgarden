@@ -13,6 +13,9 @@ APP_PORT = int(os.getenv("APP_PORT", 8000))
 # gRPC服务端口
 GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))
 
+# WebSocket服务端口
+WEBSOCKET_PORT = int(os.getenv("WEBSOCKET_PORT", 8001))
+
 # 日志配置
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 

@@ -130,7 +130,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                 data = json.loads(message["text"])
                                 
                                 if "session_id" in data and "type" in data:
-                                    session_id = str(uuid.UUID(bytes=data["session_id"]))
+                                    session_id = str(uuid.UUID(bytes=data["session_id"].bytes))
                                     
                                     # 查找对应的前端客户端
                                     if session_id in session_to_client:

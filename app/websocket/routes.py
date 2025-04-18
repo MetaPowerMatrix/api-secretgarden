@@ -180,7 +180,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                 
                                 try:
                                     # 将字节转换为UUID字符串
-                                    session_id = uuid.UUID(bytes=session_id_bytes).hex
+                                    session_id = uuid.UUID(bytes=session_id_bytes)
                                     
                                     # 查找对应的前端客户端
                                     if session_id in session_to_client:
@@ -369,6 +369,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                     del client_to_session[client_id]
                 
                 logger.info(f"前端客户端资源已清理: {client_id}")
+                logger.debug(f"删除会话映射: 会话ID={session_id}")
         else:
             # 未知客户端类型
             await websocket.send_text(json.dumps({

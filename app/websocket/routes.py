@@ -66,7 +66,7 @@ class ConnectionManager:
 # 创建连接管理器实例
 connection_manager = ConnectionManager()
 
-async def save_raw_to_wav(raw_data, wav_file_path="/home/ye/temp.wav"):
+async def save_raw_to_wav(raw_data, wav_file_path="/home/ubuntu/temp.wav"):
     """将原始PCM数据保存为WAV文件"""
     with wave.open(wav_file_path, 'wb') as wav_file:
         wav_file.setnchannels(1)

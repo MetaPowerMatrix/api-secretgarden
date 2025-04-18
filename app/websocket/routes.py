@@ -195,7 +195,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                         else:
                                             logger.warning(f"找不到客户端ID: {client_id}")
                                     else:
-                                        logger.warning(f"找不到会话ID: {session_id}")
+                                        logger.warning(f"转发音频数据失败,找不到会话ID: {session_id}")
                                 except ValueError:
                                     logger.error("无法解析会话ID")
                             else:
@@ -251,7 +251,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                         if "bytes" in message:
                             # 接收音频数据块
                             audio_data = message["bytes"]
-                            logger.info(f"接收到前端音频数据: {len(audio_data)} 字节")
+                            # logger.info(f"接收到前端音频数据: {len(audio_data)} 字节")
                             
                             # 将数据添加到缓冲区
                             session_audio_buffers[session_id].extend(audio_data)
@@ -278,22 +278,21 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                                 continue
                                             
                                             # 转发音频数据到AI后端
-                                            complete_audio_data = bytes(session_audio_buffers[session_id])
-                                            
                                             # 创建包含会话ID的二进制数据包
                                             # 会话ID转为二进制
+                                            complete_audio_data = bytes(session_audio_buffers[session_id])
                                             session_id_bytes = uuid.UUID(session_id).bytes
                                             data_with_session = session_id_bytes + complete_audio_data
-                                            
+
                                             # 加入等待处理队列
                                             pending_sessions.add(session_id)
                                             
                                             # 通知AI后端新的音频处理请求
-                                            await ai_backend.send_text(json.dumps({
-                                                "type": "new_audio",
-                                                "session_id": session_id,
-                                                "audio_size": len(complete_audio_data)
-                                            }))
+                                            # await ai_backend.send_text(json.dumps({
+                                            #     "type": "new_audio",
+                                            #     "session_id": session_id,
+                                            #     "audio_size": len(complete_audio_data)
+                                            # }))
                                             
                                             # 发送音频数据
                                             await ai_backend.send_bytes(data_with_session)

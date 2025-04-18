@@ -295,10 +295,10 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                         session_audio_buffers[session_id] = bytearray()
                                         
                                         # 通知前端
-                                        await websocket.send_text(json.dumps({
-                                            "type": "status",
-                                            "content": "音频已转发至AI后端处理"
-                                        }))
+                                        # await websocket.send_text(json.dumps({
+                                        #     "type": "status",
+                                        #     "content": "音频已转发至AI后端处理"
+                                        # }))
                                     else:
                                         await websocket.send_text(json.dumps({
                                             "type": "error",

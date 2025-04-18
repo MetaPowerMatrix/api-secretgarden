@@ -207,7 +207,7 @@ async def upload_product_to_jd(request: ProductUploadRequest):
                 brand_info = b
                 break
                 
-        if not brand_info or not brand_info.get("brand_info", {}).get("brandId"):
+        if not brand_info or not brand_info.get("brand_info", {}):
             raise HTTPException(status_code=400, detail=f"未找到商品 {request.product_id} 的品牌信息")
             
         # 5. 构建请求参数
@@ -215,7 +215,7 @@ async def upload_product_to_jd(request: ProductUploadRequest):
         trace_id = str(uuid.uuid4()).replace("-", "")
         
         # 获取商品相关数据
-        brand_id = brand_info.get("brand_info", {}).get("brandId")
+        brand_id = brand_info.get("brand_info", {})
         category_id = category_info.get("category_id")
         shop_category_ids = []
         if shop_category_info and shop_category_info.get("category_id"):
@@ -244,7 +244,7 @@ async def upload_product_to_jd(request: ProductUploadRequest):
         # 描述信息
         product_desc = product.get("description", "暂无描述")
         if not product_desc or len(product_desc) < 10:
-            product_desc = sku_name + "。" + "这是一个优质商品。" * 3  # 确保描述至少10个字符
+            product_desc = sku_name + " - " + "秘密花园，隐私发货，品质优选。"  # 确保描述至少10个字符
             
         # 重量信息(默认0.5kg)
         weight = 0.5

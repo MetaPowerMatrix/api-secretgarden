@@ -3,6 +3,7 @@ import logging
 from typing import List, Dict, Optional, Set
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import uuid
+import wave
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -64,6 +65,16 @@ class ConnectionManager:
 
 # 创建连接管理器实例
 connection_manager = ConnectionManager()
+
+async def save_raw_to_wav(raw_data, wav_file_path="temp.wav"):
+    """将原始PCM数据保存为WAV文件"""
+    with wave.open(wav_file_path, 'wb') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(44100)
+        wav_file.writeframes(raw_data)
+    return wav_file_path
+
 
 @router.websocket("/proxy")
 async def proxy_websocket_endpoint(websocket: WebSocket):
@@ -269,6 +280,8 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                         # 前端发送完所有音频数据
                                         if len(session_audio_buffers[session_id]) > 0:
                                             logger.info(f"前端音频传输完成，准备转发到AI后端处理，总大小: {len(session_audio_buffers[session_id])} 字节")
+                                            wav_file_path = await save_raw_to_wav(session_audio_buffers[session_id])
+                                            logger.info(f"音频数据已保存为WAV文件: {wav_file_path}")
                                             
                                             # 检查AI后端是否连接
                                             if ai_backend is None:

@@ -79,6 +79,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
     try:
         # 等待连接标识消息
         init_message = await websocket.receive_text()
+        logger.info(f"初始化消息: {init_message}")
         init_data = json.loads(init_message)
         
         if "client_type" not in init_data:

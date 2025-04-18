@@ -71,7 +71,7 @@ async def save_raw_to_wav(raw_data, wav_file_path="/home/ubuntu/temp.wav"):
     with wave.open(wav_file_path, 'wb') as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
-        wav_file.setframerate(44100)
+        wav_file.setframerate(16000)
         wav_file.writeframes(raw_data)
     return wav_file_path
 

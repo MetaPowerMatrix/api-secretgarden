@@ -1,21 +1,8 @@
 import json
 import logging
-import asyncio
-import os
-import datetime
-import wave
-import numpy as np
-import requests
-from typing import List, Dict, Optional
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from openai import OpenAI
-import tempfile
-import io
-import edge_tts
-import aiofiles
-from pydub import AudioSegment
-
-from app.config import settings
+from typing import List, Dict, Optional, Set
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+import uuid
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -30,6 +17,21 @@ recording_sessions = {}
 
 # 对话历史
 conversation_history = []
+
+# ===== WebSocket代理相关变量 =====
+# 前端客户端连接管理
+frontend_clients: Dict[str, WebSocket] = {}
+# AI后端连接管理
+ai_backend: Optional[WebSocket] = None
+# 前端会话ID到客户端映射
+session_to_client: Dict[str, str] = {}
+# 客户端ID到会话ID映射
+client_to_session: Dict[str, str] = {}
+# 会话音频数据缓冲
+session_audio_buffers: Dict[str, bytearray] = {}
+# 等待AI处理的会话队列
+pending_sessions: Set[str] = set()
+
 
 class ConnectionManager:
     """管理WebSocket连接"""
@@ -63,285 +65,319 @@ class ConnectionManager:
 # 创建连接管理器实例
 connection_manager = ConnectionManager()
 
-def vosk_speech_to_text(audio_path, model_path="vosk-model-cn-0.22"):
+@router.websocket("/proxy")
+async def proxy_websocket_endpoint(websocket: WebSocket):
     """
-    使用Vosk离线识别（需提前下载语言模型）
-    :param model_path: 模型目录路径（中文小模型）
+    WebSocket代理端点
+    连接双方：
+    1. 前端客户端 - 发送音频数据，接收AI处理后的结果
+    2. AI后端 - 接收前端发送的音频数据，处理后返回结果
     """
-    # 加载模型（需从https://alphacephei.com/vosk/models下载）
-    model = Model(model_path)
+    await websocket.accept()
     
-    with wave.open(audio_path, 'rb') as wf:
-        recognizer = KaldiRecognizer(model, wf.getframerate())
-        
-        text = []
-        while True:
-            data = wf.readframes(4000)
-            if len(data) == 0:
-                break
-            if recognizer.AcceptWaveform(data):
-                result = json.loads(recognizer.Result())
-                text.append(result.get("text", ""))
-        
-        final_result = json.loads(recognizer.FinalResult())
-        text.append(final_result.get("text", ""))
-        
-    return " ".join(text)
-
-async def save_raw_to_wav(raw_data, wav_file_path):
-    """将原始PCM数据保存为WAV文件"""
-    with wave.open(wav_file_path, 'wb') as wav_file:
-        wav_file.setnchannels(ESP32_CHANNELS)
-        wav_file.setsampwidth(ESP32_SAMPLE_WIDTH)
-        wav_file.setframerate(ESP32_SAMPLE_RATE)
-        wav_file.writeframes(raw_data)
-    return wav_file_path
-
-async def get_deepseek_response(prompt):
-    """调用DeepSeek API获取回复"""
+    # 首先确定连接类型（前端或AI后端）
     try:
-        # 保存对话历史以维持上下文
-        global conversation_history
+        # 等待连接标识消息
+        init_message = await websocket.receive_text()
+        init_data = json.loads(init_message)
         
-        # 构建完整消息历史
-        messages = conversation_history + [{"role": "user", "content": prompt}]
-        
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "model": "deepseek-chat",
-            "messages": messages,
-            "temperature": 0.7,
-            "max_tokens": 800,
-        }
-        
-        response = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers=headers,
-            json=data
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            assistant_response = result["choices"][0]["message"]["content"]
+        if "client_type" not in init_data:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "content": "缺少客户端类型标识"
+            }))
+            await websocket.close()
+            return
             
-            # 更新对话历史
-            conversation_history.append({"role": "user", "content": prompt})
-            conversation_history.append({"role": "assistant", "content": assistant_response})
+        client_type = init_data["client_type"]
+        
+        if client_type == "ai_backend":
+            # 处理AI后端连接
+            global ai_backend
             
-            # 保持对话历史在合理长度
-            if len(conversation_history) > 10:
-                conversation_history = conversation_history[-10:]
+            # 如果已有AI后端连接，拒绝新连接
+            if ai_backend is not None:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "content": "已存在AI后端连接"
+                }))
+                await websocket.close()
+                return
                 
-            return assistant_response
-        else:
-            print(f"DeepSeek API错误: {response.status_code}")
-            print(response.text)
-            return "抱歉，我无法获取回复。请稍后再试。"
-    except Exception as e:
-        print(f"调用DeepSeek API错误: {e}")
-        return "抱歉，处理您的请求时出现了错误。"
-
-async def text_to_speech(text):
-    try:
-        # 生成临时文件路径
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        temp_path = os.path.join(PROCESSED_DIR, f"temp_tts_{timestamp}.mp3")
-        print(f"mp3生成临时文件路径: {temp_path}")
-        
-        # 1. 生成MP3
-        communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural")
-        await communicate.save(temp_path)
-        
-        # 2. 用pydub处理
-        audio = AudioSegment.from_file(temp_path, format="mp3")
-        audio = audio.set_frame_rate(ESP32_SAMPLE_RATE)
-        audio = audio.set_channels(ESP32_CHANNELS)
-        audio = audio.set_sample_width(ESP32_SAMPLE_WIDTH)
-        
-        # 3. 导出为PCM
-        pcm_data = audio.raw_data
-        print(f"pcm_data: {len(pcm_data)}")
-
-        # 调试：验证数据有效性
-        assert len(pcm_data) % (ESP32_SAMPLE_WIDTH * ESP32_CHANNELS) == 0, "无效的PCM数据长度"
-        
-        return pcm_data
-        
-    except Exception as e:
-        print(f"TTS错误: {e}")
-        return None
-    # finally:
-        # if 'temp_path' in locals() and os.path.exists(temp_path):
-            # os.remove(temp_path)
-
-async def process_audio(raw_audio_data, websocket):
-    """处理音频数据的完整流程"""
-    try:
-        # 生成唯一文件名
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        wav_file_path = os.path.join(AUDIO_DIR, f"audio_{timestamp}.wav")
-        
-        # 将原始数据保存为WAV文件
-        await save_raw_to_wav(raw_audio_data, wav_file_path)
-        print(f"已保存WAV文件: {wav_file_path}")
-        
-        # 转录音频
-        transcript = vosk_speech_to_text(wav_file_path)
-        if not transcript:
-            return None, "抱歉，无法识别您的语音。"
-        
-        print(f"语音识别结果: {transcript}")
-        await websocket.send(json.dumps({"type": "text", "content": transcript}))
-        
-        # 获取DeepSeek回复
-        ai_response = await get_deepseek_response(transcript)
-        print(f"ai_response: {ai_response}")
-        await websocket.send(json.dumps({"type": "text", "content": ai_response}))
-
-        # 生成语音回复
-        audio_response = await text_to_speech(ai_response)
-        print(f"audio_response: {len(audio_response)}")
-
-        # 如果成功生成语音
-        if audio_response:
-            return audio_response, ai_response
-        
-        return None, ai_response
-    except Exception as e:
-        print(f"处理音频流程出错: {e}")
-        return None, "处理请求时发生错误。"
-
-@router.websocket(settings.WEBSOCKET_PATH)
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket连接端点"""
-    # 生成客户端ID
-    client_id = f"client_{id(websocket)}"
-    
-    # 注册新客户端
-    print(f"客户端已连接: {websocket.remote_address} (ID: {client_id})")
-    # 建立连接
-    await connection_manager.connect(websocket)
-    
-    # 初始化客户端的音频缓冲区
-    audio_buffers[client_id] = bytearray()
-    # 初始化客户端的录音会话标识
-    recording_sessions[client_id] = None
-    
-    try:
-        async for message in websocket:
-            # 检查消息类型 (二进制或文本)
-            if isinstance(message, bytes):
-                # 接收音频数据块
-                print(f"接收到音频数据块: {len(message)} 字节")
-                
-                # 将数据添加到缓冲区
-                audio_buffers[client_id].extend(message)
-                print(f"当前音频缓冲区大小: {len(audio_buffers[client_id])} 字节")
-                
-                # 检查是否需要处理完整音频 (通过ESP32发送的停止录音命令来触发)
-                # 这里不做处理，等待录音停止命令
-                
-            else:
-                # 尝试解析为JSON (IMU数据或其他命令)
-                try:
-                    data = json.loads(message)
-                    if "imu" in data:
-                        # 这是IMU数据
-                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                        imu_file = os.path.join(IMU_DIR, f"imu_{timestamp}.json")
-                        
-                        with open(imu_file, "w") as f:
-                            f.write(message)
-                        
-                        print(f"接收到IMU数据: {message}")
-                    elif "command" in data:
-                        # 处理命令消息
-                        command = data["command"]
-                        if command == "reset_conversation":
-                            conversation_history.clear()
-                            await websocket.send(json.dumps({"type": "status", "content": "对话已重置"}))
-                        elif command == "get_audio_params":
-                            # 发送音频参数信息
-                            await websocket.send(json.dumps({
-                                "type": "audio_params", 
-                                "content": {
-                                    "sample_rate": ESP32_SAMPLE_RATE,
-                                    "channels": ESP32_CHANNELS,
-                                    "sample_width": ESP32_SAMPLE_WIDTH
-                                }
-                            }))
-                        elif command == "recording_stopped":
-                            # 处理完整的录音数据
-                            if len(audio_buffers[client_id]) > 0:
-                                # 保存完整音频数据
-                                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                                complete_audio_data = bytes(audio_buffers[client_id])
-                                
-                                # 保存原始音频数据
-                                raw_file = os.path.join(AUDIO_DIR, f"complete_audio_{timestamp}.raw")
-                                with open(raw_file, "wb") as f:
-                                    f.write(complete_audio_data)
-                                
-                                print(f"接收到完整录音: {len(complete_audio_data)} 字节, 已保存到 {raw_file}")
-                                
-                                # 处理音频并获取回复
-                                audio_response, text_response = await process_audio(complete_audio_data, websocket)
-                                
-                                # 发送文本回复（调试用）
-                                # await websocket.send(json.dumps({"type": "text", "content": text_response}))
-                                
-                                # 如果有音频回复，发送PCM音频数据
-                                
-                                if audio_response:
-                                    total_audio_length = len(audio_response)
-                                    while total_audio_length > 0:
-                                        send_audio = audio_response[0:5120]
-                                        print(f"开始发送PCM音频回复: {len(send_audio)} 字节")
-                                        await websocket.send(send_audio)
-                                        total_audio_length -= len(send_audio)
-                                        audio_response = audio_response[len(send_audio):]
-                                        await asyncio.sleep(0.05)
-                                
-                                # 清空缓冲区，准备下一次录音
-                                audio_buffers[client_id] = bytearray()
-                                print("音频缓冲区已清空，准备下一次录音")
-                            else:
-                                print("收到录音停止命令，但缓冲区为空")
-                                await websocket.send(json.dumps({"type": "error", "content": "没有接收到音频数据"}))
-                    elif "heartbeat" in data:
-                        print(f"接收到心跳: {data['heartbeat']}")
-                    elif "type" in data and data["type"] == "audio_metadata":
-                        print(f"接收到音频元数据: {data}")
-                    else:
-                        print(f"接收到未知的JSON数据: {message}")
-                except json.JSONDecodeError:
-                    print(f"接收到未知的文本数据: {message}")
-
-    except websockets.exceptions.ConnectionClosed:
-        print("连接已关闭")
-    except Exception as e:
-        logger.error(f"WebSocket错误: {str(e)}")
-    finally:
-        # 处理可能的未完成录音数据
-        if client_id in audio_buffers and len(audio_buffers[client_id]) > 0:
+            # 设置全局AI后端连接
+            ai_backend = websocket
+            logger.info("AI后端已连接")
+            
+            # 向AI后端发送确认消息
+            await websocket.send_text(json.dumps({
+                "type": "status",
+                "content": "连接成功"
+            }))
+            
             try:
-                logger.info(f"连接关闭前处理剩余音频数据: {len(audio_buffers[client_id])} 字节")
-                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                raw_file = os.path.join(settings.AUDIO_DIR, f"incomplete_audio_{timestamp}.raw")
-                with open(raw_file, "wb") as f:
-                    f.write(bytes(audio_buffers[client_id]))
+                # 监听来自AI后端的消息
+                while True:
+                    message = await websocket.receive()
+                    
+                    # 检查消息类型
+                    if "text" in message:
+                        # 解析JSON消息
+                        try:
+                            data = json.loads(message["text"])
+                            
+                            if "session_id" in data and "type" in data:
+                                session_id = data["session_id"]
+                                
+                                # 查找对应的前端客户端
+                                if session_id in session_to_client:
+                                    client_id = session_to_client[session_id]
+                                    
+                                    if client_id in frontend_clients:
+                                        frontend_ws = frontend_clients[client_id]
+                                        
+                                        # 转发消息给前端
+                                        if data["type"] == "text":
+                                            # 文本消息
+                                            await frontend_ws.send_text(json.dumps({
+                                                "type": "text",
+                                                "content": data["content"]
+                                            }))
+                                        elif data["type"] == "processing_complete":
+                                            # 处理完成消息
+                                            if session_id in pending_sessions:
+                                                pending_sessions.remove(session_id)
+                                            
+                                            # 通知前端处理完成
+                                            await frontend_ws.send_text(json.dumps({
+                                                "type": "status",
+                                                "content": "处理完成"
+                                            }))
+                                        
+                                        logger.info(f"已将AI处理的音频数据块转发至前端客户端 {client_id}, 大小: {len(audio_data)} 字节")
+                                    else:
+                                        logger.warning(f"找不到客户端ID: {client_id}")
+                                else:
+                                    logger.warning(f"找不到会话ID: {session_id}")
+                            else:
+                                logger.warning("AI后端消息缺少session_id或type")
+                                
+                        except json.JSONDecodeError:
+                            logger.error("无法解析AI后端发送的JSON消息")
+                    
+                    elif "bytes" in message:
+                        # 处理二进制数据（音频）
+                        binary_data = message["bytes"]
+                        
+                        # 从二进制数据中提取会话ID（前8字节）
+                        if len(binary_data) > 16:
+                            # 提取会话ID（假设会话ID是UUID格式，存储在前16字节）
+                            session_id_bytes = binary_data[:16]
+                            audio_data = binary_data[16:]
+                            
+                            try:
+                                # 将字节转换为UUID字符串
+                                session_id = uuid.UUID(bytes=session_id_bytes).hex
+                                
+                                # 查找对应的前端客户端
+                                if session_id in session_to_client:
+                                    client_id = session_to_client[session_id]
+                                    
+                                    if client_id in frontend_clients:
+                                        frontend_ws = frontend_clients[client_id]
+                                        
+                                        # 直接转发音频数据到前端
+                                        await frontend_ws.send_bytes(audio_data)
+                                        logger.info(f"已将AI处理的音频数据转发至前端客户端 {client_id}")
+                                    else:
+                                        logger.warning(f"找不到客户端ID: {client_id}")
+                                else:
+                                    logger.warning(f"找不到会话ID: {session_id}")
+                            except ValueError:
+                                logger.error("无法解析会话ID")
+                        else:
+                            logger.error("音频数据格式不正确")
+            except WebSocketDisconnect:
+                logger.info("AI后端断开连接")
             except Exception as e:
-                logger.error(f"处理未完成音频数据出错: {e}")
-        
-        # 清理资源
-        if client_id in audio_buffers:
-            del audio_buffers[client_id]
-        if client_id in recording_sessions:
-            del recording_sessions[client_id]
+                import sys
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                line_number = exc_tb.tb_lineno
+                logger.error(f"AI后端连接错误: {str(e)}, 出错行号: {line_number}")
+            finally:
+                # 清理AI后端连接
+                ai_backend = None
+                logger.info("AI后端连接已关闭")
+                
+        elif client_type == "frontend":
+            # 处理前端客户端连接
             
-        # 断开连接
-        await connection_manager.disconnect(websocket) 
+            # 生成客户端ID和会话ID
+            client_id = f"client_{id(websocket)}"
+            session_id = str(uuid.uuid4())
+            
+            # 记录映射关系
+            frontend_clients[client_id] = websocket
+            session_to_client[session_id] = client_id
+            client_to_session[client_id] = session_id
+            
+            # 初始化音频缓冲区
+            session_audio_buffers[session_id] = bytearray()
+            
+            logger.info(f"前端客户端已连接: ID={client_id}, 会话ID={session_id}")
+            
+            # 向前端发送会话信息
+            await websocket.send_text(json.dumps({
+                "type": "session_info",
+                "content": {
+                    "session_id": session_id,
+                    "client_id": client_id
+                }
+            }))
+            
+            try:
+                # 监听来自前端的消息
+                while True:
+                    message = await websocket.receive()
+                    
+                    # 检查消息类型
+                    if "bytes" in message:
+                        # 接收音频数据块
+                        audio_data = message["bytes"]
+                        logger.info(f"接收到前端音频数据: {len(audio_data)} 字节")
+                        
+                        # 将数据添加到缓冲区
+                        session_audio_buffers[session_id].extend(audio_data)
+                        
+                    elif "text" in message:
+                        # 解析JSON消息
+                        try:
+                            data = json.loads(message["text"])
+                            
+                            if "command" in data:
+                                command = data["command"]
+                                
+                                if command == "audio_complete":
+                                    # 前端发送完所有音频数据
+                                    if len(session_audio_buffers[session_id]) > 0:
+                                        logger.info(f"前端音频传输完成，准备转发到AI后端处理，总大小: {len(session_audio_buffers[session_id])} 字节")
+                                        
+                                        # 检查AI后端是否连接
+                                        if ai_backend is None:
+                                            await websocket.send_text(json.dumps({
+                                                "type": "error",
+                                                "content": "AI后端未连接，无法处理请求"
+                                            }))
+                                            continue
+                                        
+                                        # 转发音频数据到AI后端
+                                        complete_audio_data = bytes(session_audio_buffers[session_id])
+                                        
+                                        # 创建包含会话ID的二进制数据包
+                                        # 会话ID转为二进制
+                                        session_id_bytes = uuid.UUID(session_id).bytes
+                                        data_with_session = session_id_bytes + complete_audio_data
+                                        
+                                        # 加入等待处理队列
+                                        pending_sessions.add(session_id)
+                                        
+                                        # 通知AI后端新的音频处理请求
+                                        await ai_backend.send_text(json.dumps({
+                                            "type": "new_audio",
+                                            "session_id": session_id,
+                                            "audio_size": len(complete_audio_data)
+                                        }))
+                                        
+                                        # 发送音频数据
+                                        await ai_backend.send_bytes(data_with_session)
+                                        
+                                        # 清空缓冲区，准备下一次录音
+                                        session_audio_buffers[session_id] = bytearray()
+                                        
+                                        # 通知前端
+                                        await websocket.send_text(json.dumps({
+                                            "type": "status",
+                                            "content": "音频已转发至AI后端处理"
+                                        }))
+                                    else:
+                                        await websocket.send_text(json.dumps({
+                                            "type": "error",
+                                            "content": "没有接收到音频数据"
+                                        }))
+                                        
+                                elif command == "cancel_processing":
+                                    # 取消正在处理的请求
+                                    if session_id in pending_sessions:
+                                        # 通知AI后端取消处理
+                                        if ai_backend is not None:
+                                            await ai_backend.send_text(json.dumps({
+                                                "type": "cancel_processing",
+                                                "session_id": session_id
+                                            }))
+                                            
+                                        pending_sessions.remove(session_id)
+                                        
+                                        await websocket.send_text(json.dumps({
+                                            "type": "status",
+                                            "content": "处理请求已取消"
+                                        }))
+                                
+                        except json.JSONDecodeError:
+                            logger.error("无法解析前端发送的JSON消息")
+                            
+            except WebSocketDisconnect:
+                logger.info(f"前端客户端断开连接: {client_id}")
+            except Exception as e:
+                import sys
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                line_number = exc_tb.tb_lineno
+                logger.error(f"前端客户端连接错误: {str(e)}, 出错行号: {line_number}")
+            finally:
+                # 清理前端客户端资源
+                if client_id in frontend_clients:
+                    del frontend_clients[client_id]
+                
+                if client_id in client_to_session:
+                    session_id = client_to_session[client_id]
+                    
+                    # 如果会话还在处理队列中，通知AI后端取消处理
+                    if session_id in pending_sessions and ai_backend is not None:
+                        try:
+                            await ai_backend.send_text(json.dumps({
+                                "type": "cancel_processing",
+                                "session_id": session_id
+                            }))
+                        except:
+                            pass
+                            
+                        pending_sessions.remove(session_id)
+                    
+                    # 清理会话相关资源
+                    if session_id in session_to_client:
+                        del session_to_client[session_id]
+                    
+                    if session_id in session_audio_buffers:
+                        del session_audio_buffers[session_id]
+                        
+                    del client_to_session[client_id]
+                
+                logger.info(f"前端客户端资源已清理: {client_id}")
+        else:
+            # 未知客户端类型
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "content": f"未知的客户端类型: {client_type}"
+            }))
+            await websocket.close()
+            
+    except WebSocketDisconnect:
+        logger.info("WebSocket连接断开")
+    except json.JSONDecodeError:
+        logger.error("无法解析客户端初始化消息")
+        await websocket.close()
+    except Exception as e:
+        import sys
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        line_number = exc_tb.tb_lineno
+        logger.error(f"WebSocket代理错误: {str(e)}, 出错行号: {line_number}")
+        await websocket.close()
+    

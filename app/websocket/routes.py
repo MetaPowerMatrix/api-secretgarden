@@ -168,7 +168,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                                     "content": "处理完成"
                                                 }))
                                             
-                                            logger.info(f"已将AI处理的音频数据块转发至前端客户端 {client_id}, 大小: {len(audio_data)} 字节")
+                                            logger.info(f"已将AI消息转发至前端客户端 {client_id}")
                                         else:
                                             logger.warning(f"找不到客户端ID: {client_id}")
                                     else:

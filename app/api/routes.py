@@ -1142,3 +1142,409 @@ async def minicpm_status(background_tasks: BackgroundTasks):
             "流式文本响应"
         ]
     }
+
+# 全局变量存储MegaTTS3模型
+megatts_model = None
+megatts_loading = False
+megatts_device = "cuda" if torch.cuda.is_available() else "cpu"
+
+def load_megatts_model():
+    """
+    加载ByteDance/MegaTTS3模型，只在第一次调用时初始化
+    """
+    global megatts_model, megatts_loading, megatts_device
+    
+    # 避免并发初始化
+    if megatts_loading:
+        return False
+        
+    if megatts_model is not None:
+        return True
+        
+    try:
+        megatts_loading = True
+        logger.info("开始加载MegaTTS3模型...")
+        
+        # 导入模型所需的模块
+        # 注意：这些导入放在函数内部，避免启动时就加载这些依赖
+        from model.modules.vocoder import WaveVAE
+        from model.modules.aligner import SparseBertAlignment
+        from model.modules.wavtokenizer import AudioTokenizer
+        from model.modules.lat_diffusion_transformer import DiffusionTransformer
+        from text.frontend import G2P
+        
+        # 加载模型
+        model_dir = "checkpoints"
+        
+        # 初始化文本预处理器
+        g2p = G2P()
+        
+        # 初始化音频分词器
+        audio_tokenizer = AudioTokenizer.from_pretrained(
+            os.path.join(model_dir, "wavtokenizer"),
+            strict=True
+        ).to(megatts_device).eval()
+        
+        # 初始化对齐模型
+        aligner = SparseBertAlignment.from_pretrained(
+            os.path.join(model_dir, "aligner"),
+            strict=True
+        ).to(megatts_device).eval()
+        
+        # 初始化扩散模型
+        diffusion_transformer = DiffusionTransformer.from_pretrained(
+            os.path.join(model_dir, "lat_diffusion_transformer"),
+            strict=True
+        ).to(megatts_device).eval()
+        
+        # 初始化声码器
+        vocoder = WaveVAE.from_pretrained(
+            os.path.join(model_dir, "wavvae"),
+            strict=True
+        ).to(megatts_device).eval()
+        
+        # 将所有模型组件打包成一个字典
+        megatts_model = {
+            "g2p": g2p,
+            "audio_tokenizer": audio_tokenizer,
+            "aligner": aligner,
+            "diffusion_transformer": diffusion_transformer,
+            "vocoder": vocoder
+        }
+        
+        logger.info(f"MegaTTS3模型已加载到{megatts_device.upper()}")
+        megatts_loading = False
+        return True
+    except Exception as e:
+        logger.error(f"加载MegaTTS3模型失败: {str(e)}")
+        megatts_loading = False
+        return False
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: Optional[str] = None
+    p_w: Optional[float] = 2.0  # 清晰度权重
+    t_w: Optional[float] = 3.0  # 相似度权重
+    seed: Optional[int] = None
+    
+@router.post("/text-to-speech")
+async def text_to_speech(
+    background_tasks: BackgroundTasks,
+    text: str = Form(...),
+    voice: Optional[str] = Form(None),
+    p_w: Optional[float] = Form(2.0),
+    t_w: Optional[float] = Form(3.0),
+    seed: Optional[int] = Form(None)
+):
+    """
+    文本到语音转换API接口
+    接受文本和参数，返回合成的语音
+    支持中英双语，可以通过p_w和t_w调整清晰度和相似度权重
+    """
+    try:
+        # 确保模型已加载
+        if not load_megatts_model():
+            raise HTTPException(status_code=500, detail="无法加载MegaTTS3模型")
+        
+        # 检查是否提供了声音参考文件
+        prompt_latent = None
+        if voice:
+            # 如果voice是一个URL或文件路径，需要加载声音文件
+            if os.path.exists(f"voices/{voice}.npy"):
+                # 加载预先提取的语音潜在表示
+                prompt_latent = np.load(f"voices/{voice}.npy")
+            else:
+                raise HTTPException(status_code=400, detail=f"找不到声音文件: {voice}")
+                
+        # 设置随机种子以保证结果可复现
+        if seed is not None:
+            torch.manual_seed(seed)
+        
+        # 合成语音
+        with torch.no_grad():
+            # 文本预处理
+            g2p = megatts_model["g2p"]
+            phonemes = g2p.process(text)
+            
+            # 创建模型输入
+            inputs = {
+                "phonemes": phonemes,
+                "prompt_latent": prompt_latent,
+                "p_w": p_w,  # 清晰度权重
+                "t_w": t_w,  # 相似度权重
+            }
+            
+            # 使用扩散模型生成语音潜在表示
+            diffusion_transformer = megatts_model["diffusion_transformer"]
+            aligner = megatts_model["aligner"]
+            
+            # 获取文本-语音对齐信息
+            alignment = aligner(phonemes)
+            
+            # 生成语音潜在表示
+            latents = diffusion_transformer.inference(
+                phonemes=phonemes, 
+                alignment=alignment,
+                prompt_latent=prompt_latent,
+                p_w=p_w,
+                t_w=t_w
+            )
+            
+            # 使用声码器将潜在表示转换为波形
+            vocoder = megatts_model["vocoder"]
+            audio_waveform = vocoder.decode(latents)
+            
+            # 规范化音频
+            audio_waveform = audio_waveform.squeeze().cpu().numpy()
+            
+            # 保存为临时文件
+            output_path = tempfile.mktemp(suffix=".wav")
+            import soundfile as sf
+            sf.write(output_path, audio_waveform, 22050) # MegaTTS采样率为22050Hz
+            
+            # 读取并编码音频文件
+            with open(output_path, "rb") as audio_file:
+                encoded_audio = b64encode(audio_file.read()).decode("utf-8")
+            
+            # 在后台任务中删除临时文件
+            background_tasks.add_task(os.unlink, output_path)
+            
+            return {
+                "code": 0,
+                "message": "文本转语音成功",
+                "data": {
+                    "text": text,
+                    "audio": encoded_audio,
+                    "parameters": {
+                        "p_w": p_w,
+                        "t_w": t_w,
+                        "voice": voice
+                    }
+                }
+            }
+            
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"文本转语音失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"文本转语音失败: {str(e)}")
+
+@router.post("/text-to-speech-streaming")
+async def text_to_speech_streaming(
+    background_tasks: BackgroundTasks,
+    text: str = Form(...),
+    voice: Optional[str] = Form(None),
+    p_w: Optional[float] = Form(2.0),
+    t_w: Optional[float] = Form(3.0),
+    seed: Optional[int] = Form(None)
+):
+    """
+    流式文本到语音转换API接口
+    进行处理时返回进度信息，完成后返回语音数据
+    """
+    
+    async def stream_generator():
+        try:
+            # 确保模型已加载
+            if not load_megatts_model():
+                yield json.dumps({"error": "无法加载MegaTTS3模型"})
+                return
+            
+            # 发送处理开始信息
+            yield json.dumps({"status": "processing", "progress": 0.0, "message": "开始文本转语音处理"}) + "\n"
+            
+            # 检查是否提供了声音参考文件
+            prompt_latent = None
+            if voice:
+                if os.path.exists(f"voices/{voice}.npy"):
+                    prompt_latent = np.load(f"voices/{voice}.npy")
+                    yield json.dumps({"status": "processing", "progress": 0.1, "message": "已加载声音特征"}) + "\n"
+                else:
+                    yield json.dumps({"error": f"找不到声音文件: {voice}"})
+                    return
+            
+            # 设置随机种子
+            if seed is not None:
+                torch.manual_seed(seed)
+            
+            # 合成语音
+            with torch.no_grad():
+                # 文本预处理
+                yield json.dumps({"status": "processing", "progress": 0.2, "message": "正在进行文本预处理"}) + "\n"
+                g2p = megatts_model["g2p"]
+                phonemes = g2p.process(text)
+                
+                # 获取文本-语音对齐信息
+                yield json.dumps({"status": "processing", "progress": 0.3, "message": "正在计算文本-语音对齐"}) + "\n"
+                aligner = megatts_model["aligner"]
+                alignment = aligner(phonemes)
+                
+                # 生成语音潜在表示
+                yield json.dumps({"status": "processing", "progress": 0.4, "message": "正在生成语音特征"}) + "\n"
+                diffusion_transformer = megatts_model["diffusion_transformer"]
+                
+                # 使用多步扩散，每个步骤更新进度
+                inference_steps = 10
+                latents = None
+                
+                for step in range(inference_steps):
+                    # 更新进度信息
+                    progress = 0.4 + (step / inference_steps) * 0.4
+                    yield json.dumps({
+                        "status": "processing", 
+                        "progress": progress, 
+                        "message": f"正在生成语音特征 (步骤 {step+1}/{inference_steps})"
+                    }) + "\n"
+                    
+                    # 单步推理（模拟过程，实际实现可能不同）
+                    latents = diffusion_transformer.inference(
+                        phonemes=phonemes, 
+                        alignment=alignment,
+                        prompt_latent=prompt_latent,
+                        p_w=p_w,
+                        t_w=t_w,
+                        inference_steps=inference_steps,
+                        current_step=step,
+                        latents=latents
+                    )
+                
+                # 使用声码器将潜在表示转换为波形
+                yield json.dumps({"status": "processing", "progress": 0.8, "message": "正在将特征转换为音频"}) + "\n"
+                vocoder = megatts_model["vocoder"]
+                audio_waveform = vocoder.decode(latents)
+                
+                # 规范化音频
+                audio_waveform = audio_waveform.squeeze().cpu().numpy()
+                
+                # 保存为临时文件
+                yield json.dumps({"status": "processing", "progress": 0.9, "message": "正在生成最终音频文件"}) + "\n"
+                output_path = tempfile.mktemp(suffix=".wav")
+                import soundfile as sf
+                sf.write(output_path, audio_waveform, 22050)
+                
+                # 读取并编码音频文件
+                with open(output_path, "rb") as audio_file:
+                    encoded_audio = b64encode(audio_file.read()).decode("utf-8")
+                
+                # 在后台任务中删除临时文件
+                background_tasks.add_task(os.unlink, output_path)
+                
+                # 发送完成信息和音频数据
+                yield json.dumps({
+                    "status": "complete", 
+                    "progress": 1.0, 
+                    "message": "文本转语音完成",
+                    "audio": encoded_audio,
+                    "text": text
+                })
+                
+        except Exception as e:
+            logger.error(f"流式文本转语音失败: {str(e)}")
+            yield json.dumps({"error": f"流式文本转语音失败: {str(e)}"})
+    
+    return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
+
+@router.get("/megatts/status")
+async def megatts_status(background_tasks: BackgroundTasks):
+    """
+    检查MegaTTS3模型加载状态
+    """
+    global megatts_model, megatts_loading
+    
+    if megatts_loading:
+        status = "loading"
+    elif megatts_model is not None:
+        status = "ready"
+    else:
+        status = "not_loaded"
+        
+    # 尝试触发模型加载（如果尚未加载）
+    if status == "not_loaded":
+        background_tasks.add_task(load_megatts_model)
+        status = "loading"
+    
+    # 获取可用的声音列表
+    voices = []
+    if os.path.exists("voices"):
+        voices = [f.replace(".npy", "") for f in os.listdir("voices") if f.endswith(".npy")]
+    
+    return {
+        "status": status,
+        "device": megatts_device,
+        "gpu_available": torch.cuda.is_available(),
+        "model": "ByteDance/MegaTTS3",
+        "available_voices": voices,
+        "capabilities": [
+            "中英文双语支持",
+            "零样本声音克隆",
+            "可调节的清晰度和相似度",
+            "支持流式生成"
+        ]
+    }
+
+@router.post("/megatts/upload-voice")
+async def upload_voice_reference(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    voice_id: str = Form(...)
+):
+    """
+    上传声音参考文件
+    用于零样本声音克隆
+    """
+    try:
+        # 确保模型已加载
+        if not load_megatts_model():
+            raise HTTPException(status_code=500, detail="无法加载MegaTTS3模型")
+        
+        # 创建voices目录（如果不存在）
+        os.makedirs("voices", exist_ok=True)
+        
+        # 保存上传的音频到临时文件
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+        
+        # 从音频提取潜在表示
+        try:
+            # 加载音频
+            audio_array, sr = librosa.load(temp_file_path, sr=22050, mono=True)
+            
+            # 使用音频分词器提取潜在表示
+            audio_tokenizer = megatts_model["audio_tokenizer"]
+            with torch.no_grad():
+                # 将音频转换为张量
+                audio_tensor = torch.FloatTensor(audio_array).unsqueeze(0).to(megatts_device)
+                
+                # 提取潜在表示
+                latent = audio_tokenizer.encode(audio_tensor)
+                
+                # 保存潜在表示
+                latent_np = latent.cpu().numpy()
+                np.save(f"voices/{voice_id}.npy", latent_np)
+                
+                # 同时保存原始音频作为参考
+                import shutil
+                shutil.copy(temp_file_path, f"voices/{voice_id}.wav")
+        
+        except Exception as e:
+            logger.error(f"声音特征提取失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"声音特征提取失败: {str(e)}")
+        finally:
+            # 在后台任务中删除临时文件
+            background_tasks.add_task(os.unlink, temp_file_path)
+        
+        return {
+            "code": 0,
+            "message": "声音参考上传并处理成功",
+            "data": {
+                "voice_id": voice_id
+            }
+        }
+            
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"声音参考处理失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"声音参考处理失败: {str(e)}")

@@ -581,7 +581,7 @@ def load_whisper_model():
             device_map="auto",  # 自动分配到可用 GPU
         )
 
-        whisper_processor = AutoProcessor.from_pretrained(model_id)
+        whisper_processor = AutoProcessor.from_pretrained(model_id, device_map="auto")
 
         # 将模型移至GPU（如果可用）
         if torch.cuda.is_available():

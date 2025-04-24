@@ -706,7 +706,8 @@ def load_deepseek_model():
     加载DeepSeek-v3模型和tokenizer，只在第一次调用时初始化
     """
     global deepseek_model, deepseek_tokenizer, deepseek_loading, deepseek_device
-    
+    os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'    
+
     # 避免并发初始化
     if deepseek_loading:
         return False
@@ -716,10 +717,10 @@ def load_deepseek_model():
         
     try:
         deepseek_loading = True
-        logger.info("开始加载DeepSeek-v3模型...")
+        logger.info("开始加载DeepSeek-R1模型...")
         
         # 加载DeepSeek-v3模型
-        model_name = "deepseek-ai/deepseek-moe-16b-chat"
+        model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
         
         # 首先加载tokenizer
         deepseek_tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -732,11 +733,11 @@ def load_deepseek_model():
             device_map=deepseek_device
         )
         
-        logger.info(f"DeepSeek-v3模型已加载到{deepseek_device.upper()}")
+        logger.info(f"DeepSeek-R1模型已加载到{deepseek_device.upper()}")
         deepseek_loading = False
         return True
     except Exception as e:
-        logger.error(f"加载DeepSeek-v3模型失败: {str(e)}")
+        logger.error(f"加载DeepSeek-R1模型失败: {str(e)}")
         deepseek_loading = False
         return False
 

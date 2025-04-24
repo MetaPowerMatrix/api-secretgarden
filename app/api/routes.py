@@ -742,7 +742,7 @@ def load_deepseek_model():
             model_path,
             torch_dtype=torch.float16,
             trust_remote_code=True,
-            device_map=deepseek_device,
+            device_map="auto",  # 自动分配到可用 GPU
             local_files_only=True
         )
         

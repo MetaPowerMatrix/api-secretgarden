@@ -649,13 +649,31 @@ async def speech_to_text(
     """
     try:
         # 验证文件类型
-        if not file.content_type.startswith('audio/'):
-            raise HTTPException(status_code=400, detail="只接受音频文件")
+        if file.content_type is not None:
+            if not file.content_type.startswith('audio/'):
+                # 检查文件扩展名
+                filename = file.filename.lower()
+                audio_extensions = ['.wav', '.mp3', '.ogg', '.flac', '.m4a', '.aac']
+                is_audio = any(filename.endswith(ext) for ext in audio_extensions)
+                
+                if not is_audio:
+                    raise HTTPException(status_code=400, detail="只接受音频文件")
+        else:
+            # 当 content_type 为 None 时，检查文件扩展名
+            filename = file.filename.lower() if file.filename else ""
+            audio_extensions = ['.wav', '.mp3', '.ogg', '.flac', '.m4a', '.aac']
+            is_audio = any(filename.endswith(ext) for ext in audio_extensions)
+            
+            if not is_audio:
+                raise HTTPException(status_code=400, detail="只接受音频文件且未提供内容类型")
         
         # 创建临时文件
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
             # 保存上传的音频
             content = await file.read()
+            if not content:
+                raise HTTPException(status_code=400, detail="上传的文件为空")
+                
             temp_file.write(content)
             temp_file_path = temp_file.name
         

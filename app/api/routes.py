@@ -557,6 +557,8 @@ def load_whisper_model():
     """
     global whisper_model, whisper_processor, model_loading
     
+    whisper_device = "cuda:1" if torch.cuda.is_available() else "cpu"
+
     logger.info("准备加载Whisper模型...")
 
     # 避免并发初始化
@@ -578,10 +580,10 @@ def load_whisper_model():
         whisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
             model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, 
             use_safetensors=True,
-            device="cuda:1" if torch.cuda.is_available() else "cpu"
+            device_map=whisper_device
         )
 
-        whisper_processor = AutoProcessor.from_pretrained(model_id, device="cuda:1" if torch.cuda.is_available() else "cpu")
+        whisper_processor = AutoProcessor.from_pretrained(model_id)
 
         # 将模型移至GPU（如果可用）
         if torch.cuda.is_available():

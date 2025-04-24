@@ -578,10 +578,10 @@ def load_whisper_model():
         whisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
             model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, 
             use_safetensors=True,
-            device_map="auto",  # 自动分配到可用 GPU
+            device="cuda:1" if torch.cuda.is_available() else "cpu"
         )
 
-        whisper_processor = AutoProcessor.from_pretrained(model_id, device_map="auto")
+        whisper_processor = AutoProcessor.from_pretrained(model_id, device="cuda:1" if torch.cuda.is_available() else "cpu")
 
         # 将模型移至GPU（如果可用）
         if torch.cuda.is_available():

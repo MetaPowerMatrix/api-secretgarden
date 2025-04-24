@@ -675,7 +675,7 @@ async def speech_to_text(
         raise HTTPException(status_code=500, detail=f"处理语音文件失败: {str(e)}")
 
 @router.get("/speech-to-text/status")
-async def speech_to_text_status():
+async def speech_to_text_status(background_tasks: BackgroundTasks):
     """
     检查Whisper模型加载状态
     """
@@ -693,7 +693,6 @@ async def speech_to_text_status():
     # 尝试触发模型加载（如果尚未加载）
     if status == "not_loaded":
         # 在后台触发模型加载
-        background_tasks = BackgroundTasks()
         background_tasks.add_task(load_whisper_model)
         status = "loading"
     

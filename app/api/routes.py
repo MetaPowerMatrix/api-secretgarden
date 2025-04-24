@@ -576,7 +576,9 @@ def load_whisper_model():
         torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
         whisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
+            model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, 
+            use_safetensors=True,
+            device_map="auto",  # 自动分配到可用 GPU
         )
 
         whisper_processor = AutoProcessor.from_pretrained(model_id)

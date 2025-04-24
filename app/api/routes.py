@@ -553,12 +553,10 @@ def is_torch_greater_or_equal_than_1_13():
 
 def load_whisper_model():
     """
-    加载Whisper模型和处理器，只在第一次调用时初始化
+    加载Whisper模型和处理器，只在第一次调用时初始化，支持多 GPU
     """
     global whisper_model, whisper_processor, model_loading
     
-    whisper_device = "cuda:1" if torch.cuda.is_available() else "cpu"
-
     logger.info("准备加载Whisper模型...")
 
     # 避免并发初始化
@@ -572,26 +570,61 @@ def load_whisper_model():
         model_loading = True
         logger.info("开始加载Whisper模型...")
         
-        # 加载小型中文模型，也可以选择其他大小的模型
+        # 加载模型
         model_id = "openai/whisper-large-v3"
         
+        # 获取 GPU 信息
+        n_gpus = torch.cuda.device_count()
+        logger.info(f"可用 GPU 数量: {n_gpus}")
+        
+        # 确定设备和数据类型
+        device_map = "auto" if n_gpus >= 1 else "cpu"
         torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-
-        whisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, 
-            use_safetensors=True,
-            device_map=whisper_device
+        
+        # 加载处理器
+        whisper_processor = AutoProcessor.from_pretrained(
+            model_id,
+            local_files_only=False
         )
-
-        whisper_processor = AutoProcessor.from_pretrained(model_id, device_map=whisper_device)
-
+        
+        # 如果有多个 GPU 可用，考虑使用量化配置减少内存占用
+        if n_gpus > 1:
+            from transformers import BitsAndBytesConfig
+            
+            quantization_config = BitsAndBytesConfig(
+                load_in_8bit=True,
+                llm_int8_threshold=6.0,
+                llm_int8_has_fp16_weight=False
+            )
+            
+            whisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
+                model_id, 
+                device_map=device_map,
+                quantization_config=quantization_config,
+                low_cpu_mem_usage=True, 
+                use_safetensors=True,
+                local_files_only=False
+            )
+        else:
+            # 单 GPU 或 CPU 加载
+            whisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
+                model_id, 
+                torch_dtype=torch_dtype,
+                device_map=device_map,
+                low_cpu_mem_usage=True, 
+                use_safetensors=True,
+                local_files_only=False
+            )
+        
+        # 使模型处于评估模式
         whisper_model.eval()
-
-        logger.info(f"Whisper模型已加载到{whisper_device}")
+        
+        logger.info(f"Whisper模型已加载，设备映射: {device_map}, 数据类型: {torch_dtype}")
         model_loading = False
         return True
     except Exception as e:
         logger.error(f"加载Whisper模型失败: {str(e)}")
+        # 记录更详细的错误信息
         import traceback
         logger.error(f"错误详情: {traceback.format_exc()}")
         model_loading = False

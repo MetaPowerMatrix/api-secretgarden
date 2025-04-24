@@ -807,15 +807,6 @@ def load_deepseek_model():
         n_gpus = torch.cuda.device_count()
         logger.info(f"可用 GPU 数量: {n_gpus}")
         
-        # 使用量化配置减少内存占用
-        from transformers import BitsAndBytesConfig
-        
-        quantization_config = BitsAndBytesConfig(
-            load_in_8bit=True,
-            llm_int8_threshold=6.0,
-            llm_int8_has_fp16_weight=False
-        )
-        
         # 首先加载tokenizer
         deepseek_tokenizer = AutoTokenizer.from_pretrained(
             model_path, 
@@ -823,23 +814,49 @@ def load_deepseek_model():
             local_files_only=True
         )
         
-        # 加载模型，使用多 GPU 和量化减少内存占用
-        deepseek_model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            trust_remote_code=True,
-            device_map="auto",  # 自动分配到可用 GPU
-            quantization_config=quantization_config,
-            local_files_only=True
-        )
+        # 使用修改后的加载配置
+        if n_gpus > 1:
+            # 方法 1: 使用 4 位量化而不是 8 位
+            from transformers import BitsAndBytesConfig
+            
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,  # 使用 4 位而不是 8 位
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4"
+            )
+            
+            deepseek_model = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                trust_remote_code=True,
+                device_map="auto",
+                quantization_config=quantization_config,
+                local_files_only=True
+            )
+            
+            logger.info("使用 4 位量化加载 DeepSeek-R1 模型")
+        else:
+            # 单 GPU 情况，使用简单的半精度而不是量化
+            deepseek_model = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                trust_remote_code=True,
+                torch_dtype=torch.float16,
+                device_map="auto",
+                local_files_only=True
+            )
+            
+            logger.info("使用半精度加载 DeepSeek-R1 模型到单 GPU")
         
-        logger.info(f"DeepSeek-R1模型已加载到多个 GPU")
+        logger.info(f"DeepSeek-R1模型已加载成功")
         deepseek_loading = False
         return True
     except Exception as e:
         logger.error(f"加载DeepSeek-R1模型失败: {str(e)}")
+        import traceback
+        logger.error(f"错误详情: {traceback.format_exc()}")
         deepseek_loading = False
         return False
-
+    
 class ChatRequest(BaseModel):
     prompt: str
     history: Optional[List[Dict[str, str]]] = []

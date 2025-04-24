@@ -585,12 +585,13 @@ def load_whisper_model():
 
         whisper_processor = AutoProcessor.from_pretrained(model_id, device_map=whisper_device)
 
+        logger.info(f"Whisper模型已加载到{whisper_device}")
+
         # 将模型移至GPU（如果可用）
-        if torch.cuda.is_available():
-            whisper_model = whisper_model.to("cuda")
-            logger.info("Whisper模型已加载到GPU")
-        else:
-            logger.info("Whisper模型已加载到CPU")
+        # if torch.cuda.is_available():
+        #     whisper_model = whisper_model.to("cuda")
+        # else:
+        #     logger.info("Whisper模型已加载到CPU")
             
         model_loading = False
         return True

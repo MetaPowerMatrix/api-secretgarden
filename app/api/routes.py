@@ -585,18 +585,15 @@ def load_whisper_model():
 
         whisper_processor = AutoProcessor.from_pretrained(model_id, device_map=whisper_device)
 
-        logger.info(f"Whisper模型已加载到{whisper_device}")
+        whisper_model.eval()
 
-        # 将模型移至GPU（如果可用）
-        # if torch.cuda.is_available():
-        #     whisper_model = whisper_model.to("cuda")
-        # else:
-        #     logger.info("Whisper模型已加载到CPU")
-            
+        logger.info(f"Whisper模型已加载到{whisper_device}")
         model_loading = False
         return True
     except Exception as e:
         logger.error(f"加载Whisper模型失败: {str(e)}")
+        import traceback
+        logger.error(f"错误详情: {traceback.format_exc()}")
         model_loading = False
         return False
 
@@ -615,15 +612,32 @@ async def transcribe_audio(audio_file_path, language="zh"):
         audio_array, sampling_rate = librosa.load(audio_file_path, sr=16000)
         
         # 处理音频
-        input_features = whisper_processor(audio_array, sampling_rate=16000, return_tensors="pt").input_features
+        inputs = whisper_processor(
+            audio_array, 
+            sampling_rate=16000, 
+            return_tensors="pt",
+            return_attention_mask=True  # 确保返回注意力掩码
+        )
         
-        # 将输入移至GPU（如果可用）
+        # 将输入移至GPU并转换为正确的数据类型（如果可用）
         if torch.cuda.is_available():
-            input_features = input_features.to("cuda")
+            # 确保数据类型匹配模型
+            dtype = whisper_model.dtype  # 获取模型的数据类型
+            inputs = {k: v.to("cuda").to(dtype) for k, v in inputs.items()}
         
         # 使用模型生成转录
         with torch.no_grad():
-            predicted_ids = whisper_model.generate(input_features, language=language)
+            # 只设置语言，不使用forced_decoder_ids
+            generation_config = {
+                "language": language,  # 设置语言
+                "task": "transcribe"   # 设置任务类型为转录
+            }
+            
+            # 生成转录
+            predicted_ids = whisper_model.generate(
+                **inputs,
+                **generation_config
+            )
         
         # 解码预测的token为文本
         transcription = whisper_processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
@@ -631,6 +645,9 @@ async def transcribe_audio(audio_file_path, language="zh"):
         return transcription
     except Exception as e:
         logger.error(f"语音转文字失败: {str(e)}")
+        # 记录更详细的错误信息
+        import traceback
+        logger.error(f"错误详情: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"语音转文字失败: {str(e)}")
 
 class TranscriptionRequest(BaseModel):

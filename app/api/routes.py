@@ -557,6 +557,8 @@ def load_whisper_model():
     """
     global whisper_model, whisper_processor, model_loading
     
+    logger.info("准备加载Whisper模型...")
+
     # 避免并发初始化
     if model_loading:
         return False
@@ -685,7 +687,9 @@ async def speech_to_text_status():
         status = "ready"
     else:
         status = "not_loaded"
-        
+    
+    print(status)
+
     # 尝试触发模型加载（如果尚未加载）
     if status == "not_loaded":
         # 在后台触发模型加载

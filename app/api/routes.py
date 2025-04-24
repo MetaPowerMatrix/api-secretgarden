@@ -710,7 +710,7 @@ deepseek_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def load_deepseek_model():
     """
-    加载DeepSeek-v3模型和tokenizer，只在第一次调用时初始化
+    加载DeepSeek-R1模型和tokenizer，只在第一次调用时初始化
     """
     global deepseek_model, deepseek_tokenizer, deepseek_loading, deepseek_device
 
@@ -725,18 +725,25 @@ def load_deepseek_model():
         deepseek_loading = True
         logger.info("开始加载DeepSeek-R1模型...")
         
-        # 加载DeepSeek-v3模型
-        model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
+        # 使用绝对路径加载本地模型
+        model_path = os.path.abspath("./models")  # 或者使用正确的绝对路径
+        
+        logger.info(f"加载模型路径: {model_path}")
         
         # 首先加载tokenizer
-        deepseek_tokenizer = AutoTokenizer.from_pretrained("/root/smart-yolo/api-secretgarden/modles", trust_remote_code=True)
+        deepseek_tokenizer = AutoTokenizer.from_pretrained(
+            model_path, 
+            trust_remote_code=True,
+            local_files_only=True
+        )
         
         # 加载模型，设置半精度以节省内存
         deepseek_model = AutoModelForCausalLM.from_pretrained(
-            "/root/smart-yolo/api-secretgarden/modles",
+            model_path,
             torch_dtype=torch.float16,
             trust_remote_code=True,
-            device_map=deepseek_device
+            device_map=deepseek_device,
+            local_files_only=True
         )
         
         logger.info(f"DeepSeek-R1模型已加载到{deepseek_device.upper()}")

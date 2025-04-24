@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel
-from typing import Dict, Any, Optional, Union, List
+from typing import Dict, Any, Optional, List
 import os
 from fastapi.responses import JSONResponse
 from fastapi.responses import StreamingResponse
@@ -12,16 +12,16 @@ import logging
 import uuid
 import requests
 import hashlib
-import io
 import tempfile
 import numpy as np
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, WhisperProcessor, WhisperForConditionalGeneration, AutoModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 import librosa
-import torchaudio
 import soundfile as sf
 from base64 import b64encode
 
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -569,12 +569,16 @@ def load_whisper_model():
         logger.info("开始加载Whisper模型...")
         
         # 加载小型中文模型，也可以选择其他大小的模型
-        model_name = "openai/whisper-small"
+        model_id = "openai/whisper-large-v3"
         
-        # 如果本地已经缓存模型，直接从缓存加载
-        whisper_processor = WhisperProcessor.from_pretrained(model_name)
-        whisper_model = WhisperForConditionalGeneration.from_pretrained(model_name)
-        
+        torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+
+        whisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
+            model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
+        )
+
+        whisper_processor = AutoProcessor.from_pretrained(model_id)
+
         # 将模型移至GPU（如果可用）
         if torch.cuda.is_available():
             whisper_model = whisper_model.to("cuda")
@@ -706,7 +710,6 @@ def load_deepseek_model():
     加载DeepSeek-v3模型和tokenizer，只在第一次调用时初始化
     """
     global deepseek_model, deepseek_tokenizer, deepseek_loading, deepseek_device
-    os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'    
 
     # 避免并发初始化
     if deepseek_loading:
@@ -723,11 +726,11 @@ def load_deepseek_model():
         model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
         
         # 首先加载tokenizer
-        deepseek_tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        deepseek_tokenizer = AutoTokenizer.from_pretrained("/root/smart-yolo/api-secretgarden/modles", trust_remote_code=True)
         
         # 加载模型，设置半精度以节省内存
         deepseek_model = AutoModelForCausalLM.from_pretrained(
-            model_name,
+            "/root/smart-yolo/api-secretgarden/modles",
             torch_dtype=torch.float16,
             trust_remote_code=True,
             device_map=deepseek_device

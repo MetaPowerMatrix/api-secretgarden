@@ -730,9 +730,22 @@ def load_deepseek_model():
         logger.info("开始加载DeepSeek-R1模型...")
         
         # 使用绝对路径加载本地模型
-        model_path = os.path.abspath("./models")  # 或者使用正确的绝对路径
+        model_path = os.path.abspath("./models")
         
         logger.info(f"加载模型路径: {model_path}")
+        
+        # 获取 GPU 信息
+        n_gpus = torch.cuda.device_count()
+        logger.info(f"可用 GPU 数量: {n_gpus}")
+        
+        # 使用量化配置减少内存占用
+        from transformers import BitsAndBytesConfig
+        
+        quantization_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=6.0,
+            llm_int8_has_fp16_weight=False
+        )
         
         # 首先加载tokenizer
         deepseek_tokenizer = AutoTokenizer.from_pretrained(
@@ -741,16 +754,16 @@ def load_deepseek_model():
             local_files_only=True
         )
         
-        # 加载模型，设置半精度以节省内存
+        # 加载模型，使用多 GPU 和量化减少内存占用
         deepseek_model = AutoModelForCausalLM.from_pretrained(
             model_path,
-            torch_dtype=torch.float16,
             trust_remote_code=True,
             device_map="auto",  # 自动分配到可用 GPU
+            quantization_config=quantization_config,
             local_files_only=True
         )
         
-        logger.info(f"DeepSeek-R1模型已加载到{deepseek_device.upper()}")
+        logger.info(f"DeepSeek-R1模型已加载到多个 GPU")
         deepseek_loading = False
         return True
     except Exception as e:

@@ -68,7 +68,6 @@ def load_model():
                 model_id, 
                 device_map=device_map,
                 quantization_config=quantization_config,
-                attn_implementation='flash_attention_2',  # 使用flash_attention_2替代sdpa
                 low_cpu_mem_usage=True, 
                 use_safetensors=True,
                 local_files_only=False

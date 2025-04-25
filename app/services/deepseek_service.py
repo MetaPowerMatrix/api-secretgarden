@@ -37,7 +37,7 @@ def load_model():
         logger.info("开始加载DeepSeek-R1模型...")
         
         # 使用绝对路径加载本地模型
-        model_path = os.path.abspath("/root/smart-yolo/api-secretgarden/models")
+        model_path = "/root/smart-yolo/api-secretgarden/models"
         
         logger.info(f"加载模型路径: {model_path}")
         
@@ -108,7 +108,7 @@ async def chat_with_model(prompt: str, history: List[Dict[str, str]] = None, max
             )
             
             # 编码输入
-            inputs = tokenizer(input_text, return_tensors="pt").to(device)
+            inputs = tokenizer(input_text, return_tensors="pt").to("cuda")
             
             # 生成回复
             outputs = model.generate(

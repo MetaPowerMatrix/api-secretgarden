@@ -105,7 +105,7 @@ async def chat_with_model(prompt: str, history: List[Dict[str, str]] = None, max
             )
             
             # 编码输入
-            inputs = tokenizer(input_text, return_tensors="pt").to(device)
+            inputs = tokenizer(input_text, return_tensors="pt").to("cuda")
             
             # 生成回复
             outputs = model.generate(

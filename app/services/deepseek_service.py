@@ -9,6 +9,9 @@ import torch
 from fastapi import HTTPException
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from typing import List, Dict, Any
+import uuid
+from vllm import AsyncLLMEngine, SamplingParams
+from vllm.engine.arg_utils import AsyncEngineArgs
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -18,6 +21,11 @@ model = None
 tokenizer = None
 loading = False
 device = "auto" if torch.cuda.is_available() else "cpu"
+
+# 在全局变量部分新增v3模型相关变量
+model_v3 = None
+tokenizer_v3 = None
+loading_v3 = False
 
 def load_model():
     """
@@ -75,6 +83,48 @@ def load_model():
         logger.error(f"加载DeepSeek-R1模型失败: {str(e)}")
         logger.error(f"错误详情: {traceback.format_exc()}")
         loading = False
+        return False
+
+# 新增v3模型加载函数
+async def load_model_v3():
+    """
+    使用vLLM加载DeepSeek-V3-0324模型
+    """
+    global model_v3, tokenizer_v3, loading_v3
+
+    if model_v3 is not None:
+        return True
+
+    try:
+        loading_v3 = True
+        logger.info("使用vLLM加载DeepSeek-V3-0324模型...")
+
+        # vLLM引擎配置（根据官方推荐参数）
+        engine_args = AsyncEngineArgs(
+            model="/path/to/converted_bf16_weights",  # 替换为转换后的BF16权重路径
+            tokenizer="deepseek-ai/deepseek-v3",
+            trust_remote_code=True,
+            tensor_parallel_size=4,  # 根据GPU数量调整
+            dtype="bfloat16",
+            max_model_len=8192,
+            gpu_memory_utilization=0.9,
+            enforce_eager=True  # 兼容DeepSeek特殊算子
+        )
+
+        # 初始化异步引擎
+        model_v3 = AsyncLLMEngine.from_engine_args(engine_args)
+        
+        # 加载独立tokenizer用于模板处理
+        tokenizer_v3 = AutoTokenizer.from_pretrained(
+            "deepseek-ai/deepseek-v3",
+            trust_remote_code=True
+        )
+        
+        logger.info("DeepSeek-V3-0324模型(vLLM)加载完成")
+        return True
+    except Exception as e:
+        logger.error(f"vLLM加载失败: {str(e)}\n{traceback.format_exc()}")
+        loading_v3 = False
         return False
 
 async def chat_with_model(prompt: str, history: List[Dict[str, str]] = None, max_length: int = 2048, 
@@ -141,22 +191,77 @@ async def chat_with_model(prompt: str, history: List[Dict[str, str]] = None, max
         logger.error(f"错误详情: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"对话生成失败: {str(e)}")
 
+# 新增v3对话函数
+async def chat_with_v30324(
+    prompt: str, 
+    history: List[Dict[str, str]] = None,
+    max_tokens: int = 2048,
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    repetition_penalty: float = 1.1
+) -> Dict[str, Any]:
+    """
+    使用vLLM进行异步推理
+    """
+    if not await load_model_v3():
+        raise HTTPException(status_code=500, detail="模型加载失败")
+
+    try:
+        # 构建消息历史
+        messages = []
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": prompt})
+
+        # 生成对话模板
+        input_text = tokenizer_v3.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+
+        # 配置采样参数
+        sampling_params = SamplingParams(
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            repetition_penalty=repetition_penalty,
+            skip_special_tokens=True
+        )
+
+        # 创建异步生成任务
+        result_generator = model_v3.generate(
+            input_text, 
+            sampling_params,
+            request_id=str(uuid.uuid4())
+        )
+
+        # 流式获取结果
+        full_output = ""
+        async for output in result_generator:
+            full_output = output.outputs[0].text
+
+        # 构造返回结果
+        return {
+            "response": full_output.strip(),
+            "history": messages + [{"role": "assistant", "content": full_output.strip()}]
+        }
+
+    except Exception as e:
+        logger.error(f"vLLM推理失败: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="推理服务异常")
+
 def get_model_status():
     """
-    获取DeepSeek模型的加载状态
+    获取所有模型状态
     """
-    global model, tokenizer, loading
-    
-    if loading:
-        status = "loading"
-    elif model is not None and tokenizer is not None:
-        status = "ready"
-    else:
-        status = "not_loaded"
-    
     return {
-        "status": status,
-        "device": device,
-        "gpu_available": torch.cuda.is_available(),
-        "model": "deepseek-ai/deepseek-R1"
+        "deepseek-r1": {
+            "status": "ready" if model else "not_loaded",
+            "device": device
+        },
+        "deepseek-v3": {
+            "status": "ready" if model_v3 else "not_loaded",
+            "device": device
+        }
     }

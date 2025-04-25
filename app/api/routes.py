@@ -15,21 +15,23 @@ import hashlib
 import tempfile
 import numpy as np
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 import librosa
 import soundfile as sf
 from base64 import b64encode
+from packaging import version
+
+# 导入模型服务
+from app.services.whisper_service import transcribe_audio, get_model_status as get_whisper_status, load_model as load_whisper_model
+from app.services.deepseek_service import chat_with_model as deepseek_chat, get_model_status as get_deepseek_status
+from app.services.minicpm_service import voice_chat as minicpm_voice_chat, get_model_status as get_minicpm_status
+from app.services.qwen_service import get_model_status as get_qwen_status, chat_with_model as qwen_chat
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 # 配置日志
 logger = logging.getLogger(__name__)
-
-# 全局变量存储加载的Whisper模型和处理器
-whisper_model = None
-whisper_processor = None
-model_loading = False
 
 router = APIRouter()
 
@@ -43,33 +45,6 @@ class JDAuthToken(BaseModel):
     uid: Optional[str] = ""
     user_nick: str
     venderId: str
-
-@router.get("/health")
-async def health_check() -> Dict[str, str]:
-    """健康检查接口"""
-    return {"status": "ok"}
-
-@router.post("/message")
-async def create_message(message: Message) -> Dict[str, Any]:
-    """示例POST接口：创建消息"""
-    return {
-        "id": "msg_123456",
-        "content": message.content,
-        "created_at": "2023-10-28T12:00:00Z"
-    }
-
-@router.get("/message/{message_id}")
-async def get_message(message_id: str) -> Dict[str, Any]:
-    """示例GET接口：获取消息"""
-    # 在实际应用中，这里会从数据库查询消息
-    if message_id != "msg_123456":
-        raise HTTPException(status_code=404, detail="消息不存在")
-    
-    return {
-        "id": message_id,
-        "content": "示例消息内容",
-        "created_at": "2023-10-28T12:00:00Z"
-    }
 
 @router.post("/upload/image")
 async def upload_image(file: UploadFile = File(...)):
@@ -546,143 +521,6 @@ async def update_product_on_jd(request: ProductUpdateRequest):
         logger.error(f"更新商品时出错: {str(e)}, 出错行号: {line_number}")
         raise HTTPException(status_code=500, detail=f"更新商品时出错: {str(e)}, 出错行号: {line_number}")
 
-from packaging import version
-
-def is_torch_greater_or_equal_than_1_13():
-    return version.parse(torch.__version__) >= version.parse("1.13.0")
-
-def load_whisper_model():
-    """
-    加载Whisper模型和处理器，只在第一次调用时初始化，支持多 GPU
-    """
-    global whisper_model, whisper_processor, model_loading
-    
-    logger.info("准备加载Whisper模型...")
-
-    # 避免并发初始化
-    if model_loading:
-        return False
-        
-    if whisper_model is not None and whisper_processor is not None:
-        return True
-        
-    try:
-        model_loading = True
-        logger.info("开始加载Whisper模型...")
-        
-        # 加载模型
-        model_id = "openai/whisper-large-v3"
-        
-        # 获取 GPU 信息
-        n_gpus = torch.cuda.device_count()
-        logger.info(f"可用 GPU 数量: {n_gpus}")
-        
-        # 确定设备和数据类型
-        device_map = "auto" if n_gpus >= 1 else "cpu"
-        torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-        
-        # 加载处理器
-        whisper_processor = AutoProcessor.from_pretrained(
-            model_id,
-            local_files_only=False
-        )
-        
-        # 如果有多个 GPU 可用，考虑使用量化配置减少内存占用
-        if n_gpus > 1:
-            from transformers import BitsAndBytesConfig
-            
-            quantization_config = BitsAndBytesConfig(
-                load_in_8bit=True,
-                llm_int8_threshold=6.0,
-                llm_int8_has_fp16_weight=False
-            )
-            
-            whisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
-                model_id, 
-                device_map=device_map,
-                quantization_config=quantization_config,
-                low_cpu_mem_usage=True, 
-                use_safetensors=True,
-                local_files_only=False
-            )
-        else:
-            # 单 GPU 或 CPU 加载
-            whisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
-                model_id, 
-                torch_dtype=torch_dtype,
-                device_map=device_map,
-                low_cpu_mem_usage=True, 
-                use_safetensors=True,
-                local_files_only=False
-            )
-        
-        # 使模型处于评估模式
-        whisper_model.eval()
-        
-        logger.info(f"Whisper模型已加载，设备映射: {device_map}, 数据类型: {torch_dtype}")
-        model_loading = False
-        return True
-    except Exception as e:
-        logger.error(f"加载Whisper模型失败: {str(e)}")
-        # 记录更详细的错误信息
-        import traceback
-        logger.error(f"错误详情: {traceback.format_exc()}")
-        model_loading = False
-        return False
-
-async def transcribe_audio(audio_file_path, language="zh"):
-    """
-    使用Whisper模型进行语音转文字
-    """
-    global whisper_model, whisper_processor
-    
-    # 确保模型已加载
-    if not load_whisper_model():
-        raise HTTPException(status_code=500, detail="无法加载Whisper模型")
-    
-    try:
-        # 读取音频文件
-        audio_array, sampling_rate = librosa.load(audio_file_path, sr=16000)
-        
-        # 处理音频
-        inputs = whisper_processor(
-            audio_array, 
-            sampling_rate=16000, 
-            return_tensors="pt",
-            return_attention_mask=True  # 确保返回注意力掩码
-        )
-        
-        # 将输入移至GPU并转换为正确的数据类型（如果可用）
-        if torch.cuda.is_available():
-            # 确保数据类型匹配模型
-            dtype = whisper_model.dtype  # 获取模型的数据类型
-            inputs = {k: v.to("cuda").to(dtype) for k, v in inputs.items()}
-        
-        # 使用模型生成转录
-        with torch.no_grad():
-            # 只设置语言，不使用forced_decoder_ids
-            generation_config = {
-                "language": language,  # 设置语言
-                "task": "transcribe"   # 设置任务类型为转录
-            }
-            
-            # 生成转录
-            predicted_ids = whisper_model.generate(
-                **inputs,
-                **generation_config
-            )
-        
-        # 解码预测的token为文本
-        transcription = whisper_processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
-        
-        return transcription
-    except Exception as e:
-        logger.error(f"语音转文字失败: {str(e)}")
-        # 记录更详细的错误信息
-        import traceback
-        logger.error(f"错误详情: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"语音转文字失败: {str(e)}")
-
 class TranscriptionRequest(BaseModel):
     language: Optional[str] = "zh"
     
@@ -752,93 +590,15 @@ async def speech_to_text_status(background_tasks: BackgroundTasks):
     """
     检查Whisper模型加载状态
     """
-    global whisper_model, whisper_processor, model_loading
+    status_info = get_whisper_status()
     
-    if model_loading:
-        status = "loading"
-    elif whisper_model is not None and whisper_processor is not None:
-        status = "ready"
-    else:
-        status = "not_loaded"
-    
-    print(status)
-
     # 尝试触发模型加载（如果尚未加载）
-    if status == "not_loaded":
+    if status_info["status"] == "not_loaded":
         # 在后台触发模型加载
         background_tasks.add_task(load_whisper_model)
-        status = "loading"
+        status_info["status"] = "loading"
     
-    return {
-        "status": status,
-        "gpu_available": torch.cuda.is_available(),
-        "model": "openai/whisper-small"
-    }
-
-# 全局变量存储加载的DeepSeek-v3模型和tokenizer
-deepseek_model = None
-deepseek_tokenizer = None
-deepseek_loading = False
-deepseek_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-def load_deepseek_model():
-    """
-    加载DeepSeek-R1模型和tokenizer，只在第一次调用时初始化
-    """
-    global deepseek_model, deepseek_tokenizer, deepseek_loading, deepseek_device
-
-    # 避免并发初始化
-    if deepseek_loading:
-        return False
-        
-    if deepseek_model is not None and deepseek_tokenizer is not None:
-        return True
-        
-    try:
-        deepseek_loading = True
-        logger.info("开始加载DeepSeek-R1模型...")
-        
-        # 使用绝对路径加载本地模型
-        model_path = os.path.abspath("./models")
-        
-        logger.info(f"加载模型路径: {model_path}")
-        
-        # 获取 GPU 信息
-        n_gpus = torch.cuda.device_count()
-        logger.info(f"可用 GPU 数量: {n_gpus}")
-        
-        # 使用量化配置减少内存占用
-        from transformers import BitsAndBytesConfig
-        
-        quantization_config = BitsAndBytesConfig(
-            load_in_8bit=True,
-            llm_int8_threshold=6.0,
-            llm_int8_has_fp16_weight=False
-        )
-        
-        # 首先加载tokenizer
-        deepseek_tokenizer = AutoTokenizer.from_pretrained(
-            model_path, 
-            trust_remote_code=True,
-            local_files_only=True
-        )
-        
-        # 加载模型，使用多 GPU 和量化减少内存占用
-        deepseek_model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            trust_remote_code=True,
-            device_map="auto",  # 自动分配到可用 GPU
-            quantization_config=quantization_config,
-            local_files_only=True
-        )
-        
-        logger.info(f"DeepSeek-R1模型已加载到多个 GPU")
-        deepseek_loading = False
-        return True
-    except Exception as e:
-        logger.error(f"加载DeepSeek-R1模型失败: {str(e)}")
-        deepseek_loading = False
-        return False
+    return status_info
 
 class ChatRequest(BaseModel):
     prompt: str
@@ -852,67 +612,23 @@ async def chat_with_model(request: ChatRequest):
     """
     与DeepSeek-v3模型进行对话
     """
-    global deepseek_model, deepseek_tokenizer
-    
-    # 确保模型已加载
-    if not load_deepseek_model():
-        raise HTTPException(status_code=500, detail="无法加载DeepSeek-v3模型")
-    
     try:
-        # 处理历史记录格式
-        messages = []
+        # 调用deepseek_service中的chat_with_model函数
+        result = await deepseek_chat(
+            prompt=request.prompt,
+            history=request.history,
+            max_length=request.max_length,
+            temperature=request.temperature,
+            top_p=request.top_p
+        )
         
-        # 如果有历史消息，添加到对话中
-        if request.history:
-            for msg in request.history:
-                if "role" in msg and "content" in msg:
-                    messages.append({"role": msg["role"], "content": msg["content"]})
-        
-        # 添加当前用户的消息
-        messages.append({"role": "user", "content": request.prompt})
-        
-        # 生成回复
-        with torch.no_grad():
-            # 准备输入
-            input_text = deepseek_tokenizer.apply_chat_template(
-                messages, 
-                tokenize=False, 
-                add_generation_prompt=True
-            )
-            
-            # 编码输入
-            inputs = deepseek_tokenizer(input_text, return_tensors="pt").to(deepseek_device)
-            
-            # 生成回复
-            outputs = deepseek_model.generate(
-                **inputs,
-                max_length=request.max_length,
-                temperature=request.temperature,
-                top_p=request.top_p,
-                do_sample=True,
-                pad_token_id=deepseek_tokenizer.eos_token_id
-            )
-            
-            # 解码输出
-            full_response = deepseek_tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
-            
-            # 提取模型的回复（去除输入部分）
-            assistant_response = full_response[len(input_text):].strip()
-            
-            # 更新历史
-            new_history = request.history.copy() if request.history else []
-            new_history.append({"role": "user", "content": request.prompt})
-            new_history.append({"role": "assistant", "content": assistant_response})
-            
-            return {
-                "code": 0,
-                "message": "对话成功",
-                "data": {
-                    "response": assistant_response,
-                    "history": new_history
-                }
-            }
-            
+        return {
+            "code": 0,
+            "message": "对话成功",
+            "data": result
+        }
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logger.error(f"对话生成失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"对话生成失败: {str(e)}")
@@ -922,70 +638,15 @@ async def chat_model_status(background_tasks: BackgroundTasks):
     """
     检查DeepSeek模型加载状态
     """
-    global deepseek_model, deepseek_tokenizer, deepseek_loading
+    status_info = get_deepseek_status()
     
-    if deepseek_loading:
-        status = "loading"
-    elif deepseek_model is not None and deepseek_tokenizer is not None:
-        status = "ready"
-    else:
-        status = "not_loaded"
-        
     # 尝试触发模型加载（如果尚未加载）
-    if status == "not_loaded":
-        background_tasks.add_task(load_deepseek_model)
-        status = "loading"
+    if status_info["status"] == "not_loaded":
+        from app.services.deepseek_service import load_model
+        background_tasks.add_task(load_model)
+        status_info["status"] = "loading"
     
-    return {
-        "status": status,
-        "device": deepseek_device,
-        "gpu_available": torch.cuda.is_available(),
-        "model": "deepseek-ai/deepseek-moe-16b-chat"
-    }
-
-# 全局变量存储MiniCPM模型和相关组件
-minicpm_model = None 
-minicpm_tokenizer = None
-minicpm_loading = False
-
-def load_minicpm_model():
-    """
-    加载MiniCPM-o-2_6模型，只在第一次调用时初始化
-    """
-    global minicpm_model, minicpm_tokenizer, minicpm_loading, deepseek_device
-    
-    # 避免并发初始化
-    if minicpm_loading:
-        return False
-        
-    if minicpm_model is not None and minicpm_tokenizer is not None:
-        return True
-        
-    try:
-        minicpm_loading = True
-        logger.info("开始加载MiniCPM-o模型...")
-        
-        # 加载MiniCPM-o-2_6模型
-        model_name = "openbmb/MiniCPM-o-2_6"
-        
-        # 加载tokenizer
-        minicpm_tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        
-        # 加载模型，使用半精度
-        minicpm_model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16,
-            trust_remote_code=True,
-            device_map=deepseek_device  # 复用已有的设备变量
-        )
-        
-        logger.info(f"MiniCPM-o模型已加载到{deepseek_device.upper()}")
-        minicpm_loading = False
-        return True
-    except Exception as e:
-        logger.error(f"加载MiniCPM-o模型失败: {str(e)}")
-        minicpm_loading = False
-        return False
+    return status_info
 
 class VoiceChatRequest(BaseModel):
     history: Optional[List[Dict[str, str]]] = []
@@ -1015,10 +676,6 @@ async def voice_chat(
         chat_history = json.loads(history)
         voice_config_dict = json.loads(voice_config)
         
-        # 确保MiniCPM模型已加载
-        if not load_minicpm_model():
-            raise HTTPException(status_code=500, detail="无法加载MiniCPM-o模型")
-        
         # 保存上传的音频到临时文件
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
             content = await file.read()
@@ -1031,74 +688,43 @@ async def voice_chat(
         # 在后台任务中删除临时音频文件
         background_tasks.add_task(os.unlink, temp_file_path)
         
-        # 准备对话历史(如果有)
-        msgs = []
-        for msg in chat_history:
-            if "role" in msg and "content" in msg:
-                msgs.append({"role": msg["role"], "content": msg["content"]})
+        # 使用minicpm_service进行语音对话
+        response = await minicpm_voice_chat(
+            audio_input=audio_input,
+            chat_history=chat_history,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            voice_config=voice_config_dict,
+            generate_audio=True,
+            stream=False
+        )
         
-        # 添加用户的新音频消息
-        msgs.append({"role": "user", "content": [audio_input]})
+        # 保存回复的音频文件
+        output_audio_path = tempfile.mktemp(suffix=".wav")
+        sf.write(output_audio_path, response["response_audio"], 16000)
         
-        # 添加语音配置的系统提示词
-        audio_system_prompt = ""
-        if voice_config_dict.get("voice_id") == "male":
-            audio_system_prompt = "You are a male voice assistant."
-        elif voice_config_dict.get("voice_id") == "female":
-            audio_system_prompt = "You are a female voice assistant."
-        else:
-            audio_system_prompt = "You are a voice assistant."
-            
-        # 如果有情感或速度设置，添加到提示词
-        if voice_config_dict.get("emotion") not in [None, "neutral"]:
-            audio_system_prompt += f" Your voice is {voice_config_dict.get('emotion')}."
-        if voice_config_dict.get("speed") != 1.0 and voice_config_dict.get("speed") is not None:
-            audio_system_prompt += f" You speak at {voice_config_dict.get('speed')} speed."
-            
-        # 端到端生成语音回复
-        try:
-            response = minicpm_model.chat(
-                msgs=msgs,
-                tokenizer=minicpm_tokenizer,
-                sampling=True,
-                max_new_tokens=max_new_tokens,
-                use_tts_template=True,  # 启用TTS模板
-                generate_audio=True,    # 生成音频
-                temperature=temperature,
-                audio_system_prompt=audio_system_prompt,  # 配置语音特性
-                stream=False
-            )
-            
-            # 保存回复的音频文件
-            output_audio_path = tempfile.mktemp(suffix=".wav")
-            sf.write(output_audio_path, response["response_audio"], 16000)
-            
-            # 读取并编码音频文件
-            with open(output_audio_path, "rb") as audio_file:
-                encoded_audio = b64encode(audio_file.read()).decode("utf-8")
-            
-            # 清理临时文件
-            background_tasks.add_task(os.unlink, output_audio_path)
-            
-            # 更新对话历史
-            new_history = chat_history.copy()
-            new_history.append({"role": "user", "content": "语音输入"})  # 占位符
-            new_history.append({"role": "assistant", "content": response["text"]})
-            
-            return {
-                "code": 0,
-                "message": "语音对话成功",
-                "data": {
-                    "text": response["text"],  # 模型生成的文本
-                    "audio": encoded_audio,     # base64编码的音频
-                    "history": new_history
-                }
+        # 读取并编码音频文件
+        with open(output_audio_path, "rb") as audio_file:
+            encoded_audio = b64encode(audio_file.read()).decode("utf-8")
+        
+        # 清理临时文件
+        background_tasks.add_task(os.unlink, output_audio_path)
+        
+        # 更新对话历史
+        new_history = chat_history.copy()
+        new_history.append({"role": "user", "content": "语音输入"})  # 占位符
+        new_history.append({"role": "assistant", "content": response["text"]})
+        
+        return {
+            "code": 0,
+            "message": "语音对话成功",
+            "data": {
+                "text": response["text"],  # 模型生成的文本
+                "audio": encoded_audio,     # base64编码的音频
+                "history": new_history
             }
-        
-        except Exception as e:
-            logger.error(f"生成语音回复失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"生成语音回复失败: {str(e)}")
-        
+        }
+    
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="历史记录或语音配置格式无效")
     except HTTPException as e:
@@ -1127,11 +753,6 @@ async def voice_chat_streaming(
             chat_history = json.loads(history)
             voice_config_dict = json.loads(voice_config)
             
-            # 确保MiniCPM模型已加载
-            if not load_minicpm_model():
-                yield json.dumps({"error": "无法加载MiniCPM-o模型"})
-                return
-            
             # 保存上传的音频到临时文件
             with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
                 content = await file.read()
@@ -1144,29 +765,15 @@ async def voice_chat_streaming(
             # 在后台任务中删除临时音频文件
             background_tasks.add_task(os.unlink, temp_file_path)
             
-            # 准备对话历史
-            msgs = []
-            for msg in chat_history:
-                if "role" in msg and "content" in msg:
-                    msgs.append({"role": msg["role"], "content": msg["content"]})
-            
-            # 添加用户的新音频消息
-            msgs.append({"role": "user", "content": [audio_input]})
-            
-            # 添加语音配置
-            audio_system_prompt = f"You are a {voice_config_dict.get('voice_id', 'default')} voice assistant."
-            
             # 流式生成文本结果
-            generator = minicpm_model.chat(
-                msgs=msgs,
-                tokenizer=minicpm_tokenizer,
-                sampling=True,
+            generator = await minicpm_voice_chat(
+                audio_input=audio_input,
+                chat_history=chat_history,
                 max_new_tokens=max_new_tokens,
-                use_tts_template=True,
-                generate_audio=False,  # 流式模式下先不生成音频
                 temperature=temperature,
-                audio_system_prompt=audio_system_prompt,
-                stream=True  # 启用流式输出
+                voice_config=voice_config_dict,
+                generate_audio=False,
+                stream=True
             )
             
             # 流式输出文本结果
@@ -1176,23 +783,13 @@ async def voice_chat_streaming(
                 yield json.dumps({"text": text_chunk}) + "\n"
             
             # 完成后生成完整的音频回复
-            msgs = []
-            for msg in chat_history:
-                if "role" in msg and "content" in msg:
-                    msgs.append({"role": msg["role"], "content": msg["content"]})
-            
-            msgs.append({"role": "user", "content": [audio_input]})
-            
-            # 生成最终的音频结果
-            response = minicpm_model.chat(
-                msgs=msgs,
-                tokenizer=minicpm_tokenizer,
-                sampling=True,
+            response = await minicpm_voice_chat(
+                audio_input=audio_input,
+                chat_history=chat_history,
                 max_new_tokens=max_new_tokens,
-                use_tts_template=True,
-                generate_audio=True,
                 temperature=temperature,
-                audio_system_prompt=audio_system_prompt,
+                voice_config=voice_config_dict,
+                generate_audio=True,
                 stream=False
             )
             
@@ -1221,92 +818,53 @@ async def minicpm_status(background_tasks: BackgroundTasks):
     """
     检查MiniCPM-o模型加载状态
     """
-    global minicpm_model, minicpm_tokenizer, minicpm_loading
+    status_info = get_minicpm_status()
     
-    if minicpm_loading:
-        status = "loading"
-    elif minicpm_model is not None and minicpm_tokenizer is not None:
-        status = "ready"
-    else:
-        status = "not_loaded"
-        
     # 尝试触发模型加载（如果尚未加载）
-    if status == "not_loaded":
-        background_tasks.add_task(load_minicpm_model)
-        status = "loading"
+    if status_info["status"] == "not_loaded":
+        from app.services.minicpm_service import load_model
+        background_tasks.add_task(load_model)
+        status_info["status"] = "loading"
     
-    return {
-        "status": status,
-        "device": deepseek_device,
-        "gpu_available": torch.cuda.is_available(),
-        "model": "openbmb/MiniCPM-o-2_6",
-        "capabilities": [
-            "端到端语音对话",
-            "语音输入到语音输出",
-            "可配置声音特性",
-            "流式文本响应"
-        ]
-    }
+    return status_info
 
-@router.post("/megatts/upload-voice")
-async def upload_voice_reference(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    voice_id: str = Form(...)
-):
+@router.post("/chat/qwen")
+async def chat_with_qwen(request: ChatRequest):
     """
-    上传声音参考文件
-    用于零样本声音克隆
+    与Qwen-QwQ-32B模型进行对话
     """
     try:
-        # 创建voices目录（如果不存在）
-        os.makedirs("voices", exist_ok=True)
-        
-        # 保存上传的音频到临时文件
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
-        
-        # 从音频提取潜在表示
-        try:
-            # 加载音频
-            audio_array, sr = librosa.load(temp_file_path, sr=22050, mono=True)
-            
-            # 使用音频分词器提取潜在表示
-            audio_tokenizer = AutoTokenizer.from_pretrained("/root/smart-yolo/Megatts/checkpoints/g2p/")
-            with torch.no_grad():
-                # 将音频转换为张量
-                audio_tensor = torch.FloatTensor(audio_array).unsqueeze(0).to(megatts_device)
-                
-                # 提取潜在表示
-                latent = audio_tokenizer.encode(audio_tensor)
-                
-                # 保存潜在表示
-                latent_np = latent.cpu().numpy()
-                np.save(f"voices/{voice_id}.npy", latent_np)
-                
-                # 同时保存原始音频作为参考
-                import shutil
-                shutil.copy(temp_file_path, f"voices/{voice_id}.wav")
-        
-        except Exception as e:
-            logger.error(f"声音特征提取失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"声音特征提取失败: {str(e)}")
-        finally:
-            # 在后台任务中删除临时文件
-            background_tasks.add_task(os.unlink, temp_file_path)
+        # 调用qwen_service中的chat_with_model函数
+        result = await qwen_chat(
+            prompt=request.prompt,
+            history=request.history,
+            max_length=request.max_length,
+            temperature=request.temperature,
+            top_p=request.top_p
+        )
         
         return {
             "code": 0,
-            "message": "声音参考上传并处理成功",
-            "data": {
-                "voice_id": voice_id
-            }
+            "message": "对话成功",
+            "data": result
         }
-            
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"声音参考处理失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"声音参考处理失败: {str(e)}")
+        logger.error(f"Qwen对话生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Qwen对话生成失败: {str(e)}")
+
+@router.get("/qwen/status")
+async def qwen_status(background_tasks: BackgroundTasks):
+    """
+    检查Qwen模型加载状态
+    """
+    status_info = get_qwen_status()
+    
+    # 尝试触发模型加载（如果尚未加载）
+    if status_info["status"] == "not_loaded":
+        from app.services.qwen_service import load_model
+        background_tasks.add_task(load_model)
+        status_info["status"] = "loading"
+    
+    return status_info

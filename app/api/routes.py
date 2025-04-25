@@ -13,18 +13,13 @@ import uuid
 import requests
 import hashlib
 import tempfile
-import numpy as np
-import torch
-from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 import librosa
 import soundfile as sf
 from base64 import b64encode
-from packaging import version
 
 # 导入模型服务
 from app.services.whisper_service import transcribe_audio, get_model_status as get_whisper_status, load_model as load_whisper_model
-from app.services.deepseek_service import chat_with_model as deepseek_chat, get_model_status as get_deepseek_status
+from app.services.deepseek_service import chat_with_v30324 as deepseek_chat, get_model_status as get_deepseek_status
 from app.services.minicpm_service import voice_chat as minicpm_voice_chat, get_model_status as get_minicpm_status
 from app.services.qwen_service import get_model_status as get_qwen_status, chat_with_model as qwen_chat
 

@@ -101,7 +101,7 @@ async def load_model_v3():
 
         # vLLM引擎配置（根据官方推荐参数）
         engine_args = AsyncEngineArgs(
-            model="/path/to/converted_bf16_weights",  # 替换为转换后的BF16权重路径
+            model="/root/smart-yolo/api-secretgarden/unsloth",  # 替换为转换后的BF16权重路径
             tokenizer="deepseek-ai/deepseek-v3",
             trust_remote_code=True,
             tensor_parallel_size=4,  # 根据GPU数量调整
@@ -255,6 +255,14 @@ def get_model_status():
     """
     获取所有模型状态
     """
+    global model, model_v3
+    # if model is None:
+    #     model = load_model()
+    if model_v3 is None:
+        model_v3 = load_model_v3()
+
+    print(f"model: {model}, model_v3: {model_v3}")
+
     return {
         "deepseek-r1": {
             "status": "ready" if model else "not_loaded",

@@ -37,7 +37,7 @@ def load_model():
         logger.info("开始加载DeepSeek-R1模型...")
         
         # 使用绝对路径加载本地模型
-        model_path = os.path.abspath("./models")
+        model_path = os.path.abspath("/root/smart-yolo/api-secretgarden/models")
         
         logger.info(f"加载模型路径: {model_path}")
         

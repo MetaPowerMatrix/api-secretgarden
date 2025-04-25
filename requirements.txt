@@ -15,9 +15,10 @@ pydub==0.25.1
 # 以下是需要补充的库
 torch>=2.0.0
 torchaudio>=2.0.0
-transformers>=4.35.0
+transformers>=4.37.0
 librosa>=0.10.0
 soundfile>=0.12.1
 python-multipart>=0.0.6
 accelerate>=0.23.0
 safetensors>=0.3.2
+sentencepiece>=0.2.0

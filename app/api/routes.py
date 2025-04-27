@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Body
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 import os
@@ -644,84 +644,35 @@ async def chat_model_status(background_tasks: BackgroundTasks):
     return status_info
 
 class VoiceChatRequest(BaseModel):
-    history: Optional[List[Dict[str, str]]] = []
-    max_new_tokens: Optional[int] = 512
-    temperature: Optional[float] = 0.3
-    voice_config: Optional[Dict[str, Any]] = {
-        "voice_id": "default",
-        "speed": 1.0,
-        "emotion": "neutral"
-    }
+    audio_input: str
+    ref_audio: str
+    output_audio_path: str
     
 @router.post("/voice-chat")
 async def voice_chat(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    history: Optional[str] = Form("[]"),
-    max_new_tokens: Optional[int] = Form(512),
-    temperature: Optional[float] = Form(0.3),
-    voice_config: Optional[str] = Form('{"voice_id": "default", "speed": 1.0, "emotion": "neutral"}')
+    request: VoiceChatRequest = Body(...),
 ):
     """
     端到端语音对话API接口
     直接接收语音输入并返回语音输出，无需中间文本转换
     """
     try:
-        # 解析历史记录和语音配置
-        chat_history = json.loads(history)
-        voice_config_dict = json.loads(voice_config)
-        
-        # 保存上传的音频到临时文件
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
-        
-        # 加载音频数据
-        audio_input, sr = librosa.load(temp_file_path, sr=16000, mono=True)
-        
-        # 在后台任务中删除临时音频文件
-        background_tasks.add_task(os.unlink, temp_file_path)
-        
         # 使用minicpm_service进行语音对话
         response = await minicpm_voice_chat(
-            audio_input=audio_input,
-            chat_history=chat_history,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            voice_config=voice_config_dict,
-            generate_audio=True,
-            stream=False
+            audio_input=request.audio_input,
+            ref_audio=request.ref_audio,
+            output_audio_path=request.output_audio_path,
         )
-        
-        # 保存回复的音频文件
-        output_audio_path = tempfile.mktemp(suffix=".wav")
-        sf.write(output_audio_path, response["response_audio"], 16000)
-        
-        # 读取并编码音频文件
-        with open(output_audio_path, "rb") as audio_file:
-            encoded_audio = b64encode(audio_file.read()).decode("utf-8")
-        
-        # 清理临时文件
-        background_tasks.add_task(os.unlink, output_audio_path)
-        
-        # 更新对话历史
-        new_history = chat_history.copy()
-        new_history.append({"role": "user", "content": "语音输入"})  # 占位符
-        new_history.append({"role": "assistant", "content": response["text"]})
         
         return {
             "code": 0,
             "message": "语音对话成功",
             "data": {
                 "text": response["text"],  # 模型生成的文本
-                "audio": encoded_audio,     # base64编码的音频
-                "history": new_history
+                "output_audio_path": request.output_audio_path,
             }
         }
     
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="历史记录或语音配置格式无效")
     except HTTPException as e:
         raise e
     except Exception as e:

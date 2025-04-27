@@ -9,6 +9,7 @@ import torch
 from fastapi import HTTPException
 from transformers import AutoModel, AutoTokenizer
 from typing import List, Dict, Any
+import librosa
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -45,14 +46,14 @@ def load_model():
             trust_remote_code=True,
             attn_implementation='flash_attention_2',  # 使用flash_attention_2替代sdpa
             torch_dtype=torch.bfloat16,
-            init_vision=False,
-            init_audio=False,
-            init_tts=False
         )
 
-        model = model.eval().to(device)
+        model = model.eval().cuda()
 
         tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+
+        model.init_tts()
+        model.tts.float()
 
         logger.info(f"MiniCPM-o模型已加载到{device.upper()}")
         loading = False
@@ -63,8 +64,7 @@ def load_model():
         loading = False
         return False
 
-async def voice_chat(audio_input, chat_history=None, max_new_tokens=512, temperature=0.3, 
-                   voice_config=None, generate_audio=True, stream=False):
+async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=128, temperature=0.3, history=None):
     """
     使用MiniCPM模型进行语音对话
     """
@@ -72,60 +72,25 @@ async def voice_chat(audio_input, chat_history=None, max_new_tokens=512, tempera
         raise HTTPException(status_code=500, detail="无法加载MiniCPM-o模型")
     
     try:
-        # 准备对话历史(如果有)
-        msgs = []
-        if chat_history:
-            for msg in chat_history:
-                if "role" in msg and "content" in msg:
-                    msgs.append({"role": msg["role"], "content": msg["content"]})
+        ref_audio, _ = librosa.load(ref_audio, sr=16000, mono=True) # load the reference audio
+        sys_prompt = model.get_sys_prompt(ref_audio=ref_audio, mode='audio_roleplay', language='zh')
+
+        # round one
+        user_question = {'role': 'user', 'content': [librosa.load(audio_input, sr=16000, mono=True)[0]]}
+        msgs = [sys_prompt, user_question]
+        res = model.chat(
+            msgs=msgs,
+            tokenizer=tokenizer,
+            sampling=True,
+            max_new_tokens=max_new_tokens,
+            use_tts_template=True,
+            generate_audio=True,
+            temperature=temperature,
+            output_audio_path=output_audio_path,
+        )
+        # history = msgs.append({'role': 'assistant', 'content': res})
         
-        # 添加用户的新音频消息
-        msgs.append({"role": "user", "content": [audio_input]})
-        
-        # 添加语音配置的系统提示词
-        audio_system_prompt = ""
-        if voice_config:
-            if voice_config.get("voice_id") == "male":
-                audio_system_prompt = "You are a male voice assistant."
-            elif voice_config.get("voice_id") == "female":
-                audio_system_prompt = "You are a female voice assistant."
-            else:
-                audio_system_prompt = "You are a voice assistant."
-                
-            # 如果有情感或速度设置，添加到提示词
-            if voice_config.get("emotion") not in [None, "neutral"]:
-                audio_system_prompt += f" Your voice is {voice_config.get('emotion')}."
-            if voice_config.get("speed") != 1.0 and voice_config.get("speed") is not None:
-                audio_system_prompt += f" You speak at {voice_config.get('speed')} speed."
-        
-        # 流式生成或一次性生成
-        if stream:
-            return model.chat(
-                msgs=msgs,
-                tokenizer=tokenizer,
-                sampling=True,
-                max_new_tokens=max_new_tokens,
-                use_tts_template=True,
-                generate_audio=False,  # 流式模式下先不生成音频
-                temperature=temperature,
-                audio_system_prompt=audio_system_prompt,
-                stream=True
-            )
-        else:
-            # 端到端生成语音回复
-            response = model.chat(
-                msgs=msgs,
-                tokenizer=tokenizer,
-                sampling=True,
-                max_new_tokens=max_new_tokens,
-                use_tts_template=True, 
-                generate_audio=generate_audio,
-                temperature=temperature,
-                audio_system_prompt=audio_system_prompt,
-                stream=False
-            )
-            return response
-        
+        return res
     except Exception as e:
         logger.error(f"生成语音回复失败: {str(e)}")
         logger.error(f"错误详情: {traceback.format_exc()}")

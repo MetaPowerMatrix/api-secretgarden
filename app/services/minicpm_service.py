@@ -74,11 +74,13 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
     
     try:
         ref_audio, _ = librosa.load(ref_audio, sr=16000, mono=True)
-        ref_audio = torch.from_numpy(ref_audio).to(model.device)
+        logger.info(f"ref_audio: {ref_audio}")
+        # ref_audio = torch.from_numpy(ref_audio).to(model.device)
         
         # 确保用户输入的音频数据也在相同设备
         user_audio, _ = librosa.load(audio_input, sr=16000, mono=True)
         user_audio = torch.from_numpy(user_audio).to(model.device)
+        logger.info(f"user_audio: {user_audio}")
         
         sys_prompt = model.get_sys_prompt(ref_audio=ref_audio, mode='audio_roleplay', language='zh')
 

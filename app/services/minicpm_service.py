@@ -46,9 +46,10 @@ def load_model():
             trust_remote_code=True,
             attn_implementation='sdpa',  # 使用flash_attention_2替代sdpa
             torch_dtype=torch.bfloat16,
+            device_map=device
         )
 
-        model = model.eval().cuda()
+        model = model.eval()
 
         tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
 

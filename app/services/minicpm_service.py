@@ -44,7 +44,7 @@ def load_model():
         model = AutoModel.from_pretrained(
             model_name,
             trust_remote_code=True,
-            attn_implementation='flash_attention_2',  # 使用flash_attention_2替代sdpa
+            attn_implementation='sdpa',  # 使用flash_attention_2替代sdpa
             torch_dtype=torch.bfloat16,
         )
 

@@ -73,11 +73,16 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
         raise HTTPException(status_code=500, detail="无法加载MiniCPM-o模型")
     
     try:
-        ref_audio, _ = librosa.load(ref_audio, sr=16000, mono=True) # load the reference audio
+        ref_audio, _ = librosa.load(ref_audio, sr=16000, mono=True)
+        ref_audio = torch.from_numpy(ref_audio).to(model.device)
+        
+        # 确保用户输入的音频数据也在相同设备
+        user_audio, _ = librosa.load(audio_input, sr=16000, mono=True)
+        user_audio = torch.from_numpy(user_audio).to(model.device)
+        
         sys_prompt = model.get_sys_prompt(ref_audio=ref_audio, mode='audio_roleplay', language='zh')
 
-        # round one
-        user_question = {'role': 'user', 'content': [librosa.load(audio_input, sr=16000, mono=True)[0]]}
+        user_question = {'role': 'user', 'content': [user_audio]}
         msgs = [sys_prompt, user_question]
         res = model.chat(
             msgs=msgs,

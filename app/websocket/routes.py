@@ -1,9 +1,12 @@
 import json
 import logging
+import os
+import random
 from typing import List, Dict, Optional, Set
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import uuid
 import wave
+import asyncio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -341,10 +344,24 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                                 "type": "status",
                                                 "content": "处理请求已取消"
                                             }))
-                                
+                                    elif command == "touch":                                        
+                                        # 触摸事件，读取触摸压力值amount,在数据目录/data/app/audio/touch中随机选择一个wav音频文件，读取并发送到客户端播放                                
+                                        amount = data["amount"]
+                                        touch_dir = "/data/app/audio/touch"
+                                        touch_files = os.listdir(touch_dir)
+                                        random_file = random.choice(touch_files)
+                                        touch_file_path = os.path.join(touch_dir, random_file)
+                                        # 读取wav音频文件为pcm数据
+                                        with wave.open(touch_file_path, "rb") as audio_file:
+                                            audio_data = audio_file.readframes(audio_file.getnframes())
+                                        # 发送音频数据，分块发送，每块5KB
+                                        chunk_size = 5120  # 大约5KB
+                                        for i in range(0, len(audio_data), chunk_size):
+                                            audio_chunk = audio_data[i:i+chunk_size]
+                                            await websocket.send_bytes(audio_chunk)
+                                            await asyncio.sleep(0.05)
                             except json.JSONDecodeError:
                                 logger.error("无法解析前端发送的JSON消息")
-                            
                     except WebSocketDisconnect:
                         logger.info(f"前端客户端断开连接: {client_id}")
                         break

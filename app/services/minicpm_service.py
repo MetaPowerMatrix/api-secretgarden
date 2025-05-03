@@ -84,7 +84,7 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
         
         sys_prompt = model.get_sys_prompt(ref_audio=ref_audio[0], mode='audio_roleplay', language='zh')
 
-        user_question = {'role': 'user', 'content': [user_audio[0]]}
+        user_question = {'role': 'user', 'content': [user_audio]}
         msgs = [sys_prompt, user_question]
         res = model.chat(
             msgs=msgs,

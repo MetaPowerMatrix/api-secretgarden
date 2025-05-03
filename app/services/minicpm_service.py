@@ -40,18 +40,30 @@ def load_model():
         # 加载MiniCPM-o-2_6模型
         model_name = "openbmb/MiniCPM-o-2_6"
 
-        # 注意这里使用flash_attention_2替代sdpa来避免滑动窗口注意力警告
-        model = AutoModel.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-            attn_implementation='sdpa',  # 使用flash_attention_2替代sdpa
-            torch_dtype=torch.bfloat16,
-            device_map=device
-        )
+        from accelerate import load_checkpoint_and_dispatch, init_empty_weights, infer_auto_device_map
+        with init_empty_weights():
+            model = AutoModel.from_pretrained(model_name, trust_remote_code=True, attn_implementation='sdpa', torch_dtype=torch.bfloat16,
+                init_audio=False, init_tts=False)
+        
+        device_map = infer_auto_device_map(model, max_memory={0: "12GB", 1: "12GB", 2: "12GB"},
+            no_split_module_classes=['SiglipVisionTransformer', 'Qwen2DecoderLayer'])
+        device_id = device_map["llm.model.embed_tokens"]
+        device_map["llm.lm_head"] = device_id # firtt and last layer should be in same device
+        device_map["vpm"] = device_id
+        device_map["resampler"] = device_id
+        device_id2 = device_map["llm.model.layers.26"]
+        device_map["llm.model.layers.8"] = device_id2
+        device_map["llm.model.layers.9"] = device_id2
+        device_map["llm.model.layers.10"] = device_id2
+        device_map["llm.model.layers.11"] = device_id2
+        device_map["llm.model.layers.12"] = device_id2
+        device_map["llm.model.layers.13"] = device_id2
+        device_map["llm.model.layers.14"] = device_id2
+        device_map["llm.model.layers.15"] = device_id2
+        device_map["llm.model.layers.16"] = device_id2
+        #print(device_map)
 
-        model = model.eval()
-
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        model = load_checkpoint_and_dispatch(model, model_name, dtype=torch.bfloat16, device_map=device_map)
 
         model.init_tts()
         model.tts.float()
@@ -74,15 +86,9 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
     
     try:
         ref_audio, _ = librosa.load(ref_audio, sr=16000, mono=True)
-        ref_audio = torch.from_numpy(ref_audio).to(model.device)
-        print(f"ref_audio: {ref_audio}")
-        
-        # 确保用户输入的音频数据也在相同设备
         user_audio, _ = librosa.load(audio_input, sr=16000, mono=True)
-        user_audio = torch.from_numpy(user_audio).to(model.device)
-        print(f"user_audio: {user_audio}")
         
-        sys_prompt = model.get_sys_prompt(ref_audio=ref_audio[0], mode='audio_roleplay', language='zh')
+        sys_prompt = model.get_sys_prompt(ref_audio=ref_audio, mode='audio_roleplay', language='zh')
 
         user_question = {'role': 'user', 'content': [user_audio]}
         msgs = [sys_prompt, user_question]

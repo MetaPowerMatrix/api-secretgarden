@@ -6,7 +6,7 @@ import logging
 import traceback
 import torch
 from fastapi import HTTPException
-from transformers import AutoModel
+from transformers import AutoModel, AutoTokenizer
 import librosa
 
 # 配置日志
@@ -63,11 +63,11 @@ def load_model():
         device_map["llm.model.layers.16"] = device_id2
         # print(device_map)
 
-        model = load_checkpoint_and_dispatch(model, "./minicpm", dtype=torch.bfloat16, device_map=device_map)
-
+        model_path = "./minicpm"
+        model = load_checkpoint_and_dispatch(model, model_path, dtype=torch.bfloat16, device_map=device_map)
         tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-        model.eval()
 
+        model.eval()
         # model.init_tts()
         # model.tts.float()
 

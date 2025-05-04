@@ -65,8 +65,11 @@ def load_model():
 
         model = load_checkpoint_and_dispatch(model, "./minicpm", dtype=torch.bfloat16, device_map=device_map)
 
-        model.init_tts()
-        model.tts.float()
+        tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+        model.eval()
+
+        # model.init_tts()
+        # model.tts.float()
 
         logger.info(f"MiniCPM-o模型已加载到{device.upper()}")
         loading = False

@@ -74,7 +74,7 @@ def load_model():
 
         model.eval()
 
-        logger.info(f"MiniCPM-o模型已加载到{model.device}")
+        logger.info(f"MiniCPM-o模型已加载到{device_id}, {device_id2}")
         loading = False
         return True
     except Exception as e:

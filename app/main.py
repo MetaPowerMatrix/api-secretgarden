@@ -61,14 +61,14 @@ async def shutdown_event():
     """应用关闭时执行的操作"""
     logger.info("Shutting down application...")
 
-def main():
-    """应用主入口"""
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=settings.APP_PORT,
-        reload=settings.APP_ENV == "development",
-    )
+# def main():
+#     """应用主入口"""
+#     uvicorn.run(
+#         "app.main:app",
+#         host="0.0.0.0",
+#         port=settings.APP_PORT,
+#         reload=settings.APP_ENV == "development",
+#     )
 
-if __name__ == "__main__":
-    main() 
+# if __name__ == "__main__":
+#     main() 

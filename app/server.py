@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.config import settings
 from app.websocket.routes import router as ws_router
 from app.services import init_services
+from app.websocket.routes import active_connections
 
 # 配置日志
 logging.basicConfig(
@@ -37,6 +38,9 @@ async def startup_event():
 @ws_app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭时执行的操作"""
+    # 关闭所有连接
+    for connection in active_connections:
+        await connection.close()
     logger.info("Shutting down WebSocket server...")
 
 # def main():

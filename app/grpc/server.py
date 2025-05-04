@@ -2,7 +2,6 @@ import time
 import logging
 import grpc
 from concurrent import futures
-from typing import Dict, Any
 
 from app.config import settings
 

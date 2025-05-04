@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -7,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.api.routes import router as api_router
-from app.grpc.server import serve_grpc
+# from app.grpc.server import serve_grpc
 from app.services import init_services
 
 # 配置日志
@@ -38,9 +37,9 @@ static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-async def start_grpc_server():
-    """启动gRPC服务器（在单独的线程中运行）"""
-    await asyncio.get_event_loop().run_in_executor(None, serve_grpc)
+# async def start_grpc_server():
+#     """启动gRPC服务器（在单独的线程中运行）"""
+#     await asyncio.get_event_loop().run_in_executor(None, serve_grpc)
 
 @app.on_event("startup")
 async def startup_event():
@@ -51,7 +50,7 @@ async def startup_event():
     init_services()
     
     # 启动gRPC服务器
-    asyncio.create_task(start_grpc_server())
+    # asyncio.create_task(start_grpc_server())
     logger.info(f"REST API available at http://localhost:{settings.APP_PORT}{settings.API_PREFIX}")
     logger.info(f"gRPC server running on port {settings.GRPC_PORT}")
     logger.info(f"Static files available at http://localhost:{settings.APP_PORT}/static")

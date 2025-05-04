@@ -30,13 +30,14 @@ uvicorn_logger.handlers = logging.getLogger().handlers
 uvicorn_logger.setLevel(log_level)
 
 # 获取应用日志记录器
-logger = logging.getLogger(__name__)
+logger = uvicorn_logger
 
 # 创建FastAPI应用
 app = FastAPI(
     title="Python Web Server",
     description="支持REST API和gRPC的Python Web服务器",
     version="0.1.0",
+    logger=uvicorn_logger,
 )
 
 # 注册REST API路由

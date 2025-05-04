@@ -69,7 +69,7 @@ def load_model():
         tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
         model.init_tts()
-        model.tts.to(model.device)
+        model.tts.to(device_id)
         model.tts.float()
 
         model.eval()

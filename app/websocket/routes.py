@@ -359,7 +359,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                         for i in range(0, len(audio_data), chunk_size):
                                             audio_chunk = audio_data[i:i+chunk_size]
                                             await websocket.send_bytes(audio_chunk)
-                                            # await asyncio.sleep(0.05)
+                                            await asyncio.sleep(0.05)
                             except json.JSONDecodeError:
                                 logger.error("无法解析前端发送的JSON消息")
                     except WebSocketDisconnect:

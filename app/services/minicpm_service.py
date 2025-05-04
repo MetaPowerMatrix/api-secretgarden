@@ -61,7 +61,7 @@ def load_model():
         device_map["llm.model.layers.14"] = device_id2
         device_map["llm.model.layers.15"] = device_id2
         device_map["llm.model.layers.16"] = device_id2
-        print(device_map)
+        # print(device_map)
 
         model = load_checkpoint_and_dispatch(model, "./minicpm", dtype=torch.bfloat16, device_map=device_map)
 

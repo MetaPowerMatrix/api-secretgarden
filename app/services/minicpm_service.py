@@ -45,7 +45,7 @@ def load_model():
                 attn_implementation='sdpa', torch_dtype=torch.bfloat16,
                 init_vision=False, init_audio=True, init_tts=True)
         
-        device_map = infer_auto_device_map(model, max_memory={0: "12GB", 1: "12GB", 2: "12GB", 3: "12GB"},
+        device_map = infer_auto_device_map(model, max_memory={0: "12GB", 1: "12GB"},
             no_split_module_classes=['SiglipVisionTransformer', 'Qwen2DecoderLayer'])
         device_id = device_map["llm.model.embed_tokens"]
         device_map["llm.lm_head"] = device_id # first and last layer should be in same device
@@ -109,6 +109,7 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
             msgs=msgs,
             tokenizer=tokenizer,
             generate_audio=True,
+            use_tts_template=True,
             output_audio_path=output_audio_path,
             **params
         )

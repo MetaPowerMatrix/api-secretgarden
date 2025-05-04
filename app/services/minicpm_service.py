@@ -2,13 +2,11 @@
 MiniCPM模型服务
 负责MiniCPM模型的加载、管理和使用
 """
-import os
 import logging
 import traceback
 import torch
 from fastapi import HTTPException
-from transformers import AutoModel, AutoTokenizer
-from typing import List, Dict, Any
+from transformers import AutoModel
 import librosa
 
 # 配置日志

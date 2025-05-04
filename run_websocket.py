@@ -19,5 +19,3 @@ if __name__ == "__main__":
         ws_ping_interval=30,           # 将WebSocket ping间隔设为30秒
         ws_ping_timeout=30,            # 将WebSocket ping超时设为30秒
     )
-
-    # uvicorn.run(ws_app, host="0.0.0.0", port=8001)

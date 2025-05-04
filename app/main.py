@@ -24,20 +24,14 @@ logging.basicConfig(
     ]
 )
 
-# 配置FastAPI日志
-uvicorn_logger = logging.getLogger("uvicorn")
-uvicorn_logger.handlers = logging.getLogger().handlers
-uvicorn_logger.setLevel(log_level)
-
 # 获取应用日志记录器
-logger = uvicorn_logger
+logger = logging.getLogger("app")
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="Python Web Server",
-    description="支持REST API和gRPC的Python Web服务器",
+    title="model access server",
+    description="支持REST API和gRPC的模型访问服务器",
     version="0.1.0",
-    logger=uvicorn_logger,
 )
 
 # 注册REST API路由
@@ -61,7 +55,7 @@ async def startup_event():
     init_services()
     
     # 启动gRPC服务器
-    # asyncio.create_task(start_grpc_server())
+    asyncio.create_task(start_grpc_server())
     logger.info(f"REST API available at http://localhost:{settings.APP_PORT}{settings.API_PREFIX}")
     logger.info(f"gRPC server running on port {settings.GRPC_PORT}")
     logger.info(f"Static files available at http://localhost:{settings.APP_PORT}/static")

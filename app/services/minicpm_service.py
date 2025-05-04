@@ -111,7 +111,6 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
         res = model.chat(
             msgs=msgs,
             tokenizer=tokenizer,
-            generate_audio=True,
             use_tts_template=True,
             output_audio_path=output_audio_path,
             **params

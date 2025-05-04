@@ -91,13 +91,13 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
         raise HTTPException(status_code=500, detail="无法加载MiniCPM-o模型")
     
     try:
-        ref_audio, _ = librosa.load(ref_audio, sr=16000, mono=True)
+        # ref_audio, _ = librosa.load(ref_audio, sr=16000, mono=True)
         user_audio, _ = librosa.load(audio_input, sr=16000, mono=True)
 
-        sys_prompt = model.get_sys_prompt(ref_audio=ref_audio, mode='audio_roleplay', language='zh')
+        # sys_prompt = model.get_sys_prompt(ref_audio=ref_audio, mode='audio_roleplay', language='zh')
 
         user_question = {'role': 'user', 'content': [user_audio]}
-        msgs = [sys_prompt, user_question]
+        msgs = [user_question]
 
         params = {
             'sampling': True,
@@ -108,10 +108,11 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
             "max_new_tokens": 2048
         }
         res = model.chat(
+            image=None,
             msgs=msgs,
             tokenizer=tokenizer,
-            use_tts_template=True,
-            output_audio_path=output_audio_path,
+            # use_tts_template=True,
+            # output_audio_path=output_audio_path,
             **params
         )
         # history = msgs.append({'role': 'assistant', 'content': res})

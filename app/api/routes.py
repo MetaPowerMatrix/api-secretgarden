@@ -668,7 +668,7 @@ async def voice_chat(
             "code": 0,
             "message": "语音对话成功",
             "data": {
-                "text": response["text"],  # 模型生成的文本
+                "text": response,  # 模型生成的文本
                 "output_audio_path": request.output_audio_path,
             }
         }

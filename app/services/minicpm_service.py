@@ -63,18 +63,18 @@ def load_model():
         device_map["llm.model.layers.16"] = device_id2
         # print(device_map)
 
-        model.device = device_id
 
         model_path = "./minicpm"
         model = load_checkpoint_and_dispatch(model, model_path, dtype=torch.bfloat16, device_map=device_map)
         tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
         model.init_tts()
+        model.tts.to(model.device)
         model.tts.float()
 
         model.eval()
 
-        logger.info(f"MiniCPM-o模型已加载到{device.upper()}")
+        logger.info(f"MiniCPM-o模型已加载到{model.device}")
         loading = False
         return True
     except Exception as e:

@@ -68,8 +68,8 @@ def load_model():
         tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
         model.eval()
-        # model.init_tts()
-        # model.tts.float()
+        model.init_tts()
+        model.tts.float()
 
         logger.info(f"MiniCPM-o模型已加载到{device.upper()}")
         loading = False

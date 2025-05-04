@@ -11,13 +11,9 @@ from app.grpc.server import serve_grpc
 from app.services import init_services
 
 # 配置日志
-log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)  # 确保日志级别有效
-log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-# 配置根记录器
 logging.basicConfig(
-    level=log_level,
-    format=log_format,
+    level=getattr(logging, settings.LOG_LEVEL),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(),  # 输出到控制台
         RotatingFileHandler('app.log', maxBytes=10*1024*1024, backupCount=5)  # 轮转日志文件

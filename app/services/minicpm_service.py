@@ -45,10 +45,10 @@ def load_model():
                 attn_implementation='sdpa', torch_dtype=torch.bfloat16,
                 init_vision=False, init_audio=True, init_tts=True)
         
-        device_map = infer_auto_device_map(model, max_memory={0: "12GB", 1: "12GB"},
+        device_map = infer_auto_device_map(model, max_memory={0: "12GB", 1: "12GB", 2: "12GB", 3: "12GB"},
             no_split_module_classes=['SiglipVisionTransformer', 'Qwen2DecoderLayer'])
         device_id = device_map["llm.model.embed_tokens"]
-        device_map["llm.lm_head"] = device_id # firtt and last layer should be in same device
+        device_map["llm.lm_head"] = device_id # first and last layer should be in same device
         device_map["vpm"] = device_id
         device_map["resampler"] = device_id
         device_id2 = device_map["llm.model.layers.26"]

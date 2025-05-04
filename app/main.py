@@ -50,7 +50,7 @@ async def startup_event():
     init_services()
     
     # 启动gRPC服务器
-    asyncio.create_task(start_grpc_server())
+    # asyncio.create_task(start_grpc_server())
     logger.info(f"REST API available at http://localhost:{settings.APP_PORT}{settings.API_PREFIX}")
     logger.info(f"gRPC server running on port {settings.GRPC_PORT}")
     logger.info(f"Static files available at http://localhost:{settings.APP_PORT}/static")

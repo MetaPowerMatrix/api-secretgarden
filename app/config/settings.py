@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 应用环境：development, production, testing
-APP_ENV = os.getenv("APP_ENV", "development")
+APP_ENV = os.getenv("APP_ENV", "production")
 
 # FastAPI服务端口
 APP_PORT = int(os.getenv("APP_PORT", 8000))

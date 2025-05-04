@@ -647,6 +647,7 @@ class VoiceChatRequest(BaseModel):
     audio_input: str
     ref_audio: str
     output_audio_path: str
+    session_id: str
     
 @router.post("/voice-chat")
 async def voice_chat(

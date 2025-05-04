@@ -95,15 +95,21 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
 
         user_question = {'role': 'user', 'content': [user_audio]}
         msgs = [sys_prompt, user_question]
+
+        params = {
+            'sampling': True,
+            'top_p': 0.8,
+            'top_k': 100,
+            'temperature': 0.7,
+            'repetition_penalty': 1.05,
+            "max_new_tokens": 2048
+        }
         res = model.chat(
             msgs=msgs,
             tokenizer=tokenizer,
-            sampling=True,
-            max_new_tokens=max_new_tokens,
-            use_tts_template=True,
             generate_audio=True,
-            temperature=temperature,
             output_audio_path=output_audio_path,
+            **params
         )
         # history = msgs.append({'role': 'assistant', 'content': res})
         

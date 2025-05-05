@@ -253,26 +253,36 @@ async def upload_product_to_jd(request: ProductUploadRequest):
             raise HTTPException(status_code=400, detail="无效的京东授权Token")
         
         # 京东API配置
-        jd_api_url = "https://openapi.jddj.com/djapi/pms/addGoodsV6"
+        jd_api_url = "https://openapi.jddj.com/djapi/PmsLightFoodSpuService/saveSpu"
         app_key = os.getenv("JDDJ_APP_KEY")
         app_secret = os.getenv("JDDJ_APP_SECRET")
         
         if not app_key or not app_secret:
             raise HTTPException(status_code=500, detail="缺少API配置")
         
-        # 应用级参数
-        app_params = {
-            "traceId": trace_id,
-            "outSkuId": out_sku_id,
-            "categoryId": category_id,
-            "brandId": brand_id,
+        # sku参数
+        sku_params = {
             "skuName": sku_name,
             "skuPrice": price,
             "weight": weight,
             "images": images,
+        }
+
+        # 应用级参数
+        app_params = {
+            "idempotentId": trace_id,
+            "outSpuId": out_sku_id,
+            "spuName": sku_name,
+            "shopCategories": shop_category_ids,
+            "categoryId": category_id,
+            "brandId": brand_id,
+            "fixedStatus": 2,  # 上架状态
+            "images": images,
             "productDesc": product_desc,
             "ifViewDesc": 0,  # 商品详情在app端展示
-            "fixedStatus": 1,  # 上架状态
+            
+            "skuPrice": price,
+            "weight": weight,
             "isSale": True,    # 可售
             "transportAttribute": "0",  # 常温
             "liquidStatue": "1",        # 非液体

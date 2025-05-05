@@ -280,7 +280,7 @@ async def upload_product_to_jd(request: ProductUploadRequest):
             "images": images,
             "productDesc": product_desc,
             "ifViewDesc": 0,  # 商品详情在app端展示
-            
+
             "skuPrice": price,
             "weight": weight,
             "isSale": True,    # 可售
@@ -673,6 +673,7 @@ async def voice_chat(
             audio_input=request.audio_input,
             ref_audio=request.ref_audio,
             output_audio_path=request.output_audio_path,
+            session_id=request.session_id
         )
         
         return {

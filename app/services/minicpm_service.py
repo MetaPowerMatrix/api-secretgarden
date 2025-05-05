@@ -8,6 +8,7 @@ import torch
 from fastapi import HTTPException
 from transformers import AutoModel, AutoTokenizer
 import librosa
+from app.services.memory_cache import MemoryCache
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -17,6 +18,9 @@ model = None
 tokenizer = None
 loading = False
 device = "auto" if torch.cuda.is_available() else "cpu"
+
+# 初始化缓存
+cache = MemoryCache()
 
 def load_model():
     """
@@ -83,9 +87,9 @@ def load_model():
         loading = False
         return False
 
-async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=128, temperature=0.3, history=None):
+async def voice_chat(audio_input, ref_audio, output_audio_path, session_id, max_new_tokens=128, temperature=0.3):
     """
-    使用MiniCPM模型进行语音对话
+    使用MiniCPM模型进行语音对话，并保存聊天记录到缓存。
     """
     if not load_model():
         raise HTTPException(status_code=500, detail="无法加载MiniCPM-o模型")
@@ -93,11 +97,15 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
     try:
         # ref_audio, _ = librosa.load(ref_audio, sr=16000, mono=True)
         user_audio, _ = librosa.load(audio_input, sr=16000, mono=True)
-
+        
         # sys_prompt = model.get_sys_prompt(ref_audio=ref_audio, mode='audio_roleplay', language='zh')
 
         user_question = {'role': 'user', 'content': [user_audio]}
         msgs = [user_question]
+
+        # 获取历史聊天记录
+        history = cache.get_messages(session_id)
+        msgs.extend(history)  # 将历史记录添加到当前消息中
 
         params = {
             'sampling': True,
@@ -111,11 +119,15 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, max_new_tokens=1
             image=None,
             msgs=msgs,
             tokenizer=tokenizer,
+            # generate_audio=True,
             # use_tts_template=True,
             # output_audio_path=output_audio_path,
             **params
         )
-        # history = msgs.append({'role': 'assistant', 'content': res})
+
+        # 将当前对话添加到缓存
+        cache.add_message(session_id, user_question)
+        cache.add_message(session_id, {'role': 'assistant', 'content': res})
         
         return res
     except Exception as e:

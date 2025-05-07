@@ -22,7 +22,7 @@ from app.services.whisper_service import transcribe_audio, get_model_status as g
 # from app.services.deepseek_service import chat_with_v30324 as deepseek_chat, get_model_status as get_deepseek_status
 from app.services.minicpm_service import voice_chat as minicpm_voice_chat, get_model_status as get_minicpm_status
 from app.services.qwen_service import get_model_status as get_qwen_status, chat_with_model as qwen_chat
-from app.services.uncensored_service import chat_with_uncensored as uncensored_chat, get_model_status as get_uncensored_status
+from app.services.uncensored_service import chat_with_uncensored as uncensored_chat, get_uncensored_status as get_uncensored_status
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 

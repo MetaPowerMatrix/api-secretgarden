@@ -826,3 +826,28 @@ async def qwen_status(background_tasks: BackgroundTasks):
         status_info["status"] = "loading"
     
     return status_info
+
+@router.post("/chat/uncensored")
+async def chat_with_uncensored(request: ChatRequest):
+    """
+    与Gryphe/MythoMax-L2-13b模型进行对话
+    """
+    from transformers import AutoTokenizer, LlamaForCausalLM
+
+    model = LlamaForCausalLM.from_pretrained("Gryphe/MythoMax-L2-13b")
+    tokenizer = AutoTokenizer.from_pretrained("Gryphe/MythoMax-L2-13b")
+
+    prompt = request.prompt
+    inputs = tokenizer(prompt, return_tensors="pt")
+
+    # Generate
+    generate_ids = model.generate(inputs.input_ids, max_length=30)
+    result = tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+
+    return {
+        "code": 0,
+        "message": "对话成功",
+        "data": result
+    }
+    
+    

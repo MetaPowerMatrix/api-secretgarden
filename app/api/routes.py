@@ -22,6 +22,7 @@ from app.services.whisper_service import transcribe_audio, get_model_status as g
 # from app.services.deepseek_service import chat_with_v30324 as deepseek_chat, get_model_status as get_deepseek_status
 from app.services.minicpm_service import voice_chat as minicpm_voice_chat, get_model_status as get_minicpm_status
 from app.services.qwen_service import get_model_status as get_qwen_status, chat_with_model as qwen_chat
+from app.services.uncensored_service import chat_with_uncensored as uncensored_chat, get_model_status as get_uncensored_status
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
@@ -832,24 +833,34 @@ async def chat_with_uncensored(request: ChatRequest):
     """
     与Gryphe/MythoMax-L2-13b模型进行对话
     """
-    from transformers import AutoTokenizer, LlamaForCausalLM
+    try:
+        # 调用uncensored_service中的chat_with_uncensored函数
+        result = await uncensored_chat(
+            prompt=request.prompt,
+        )
 
-    model = LlamaForCausalLM.from_pretrained("Gryphe/MythoMax-L2-13b")
-    tokenizer = AutoTokenizer.from_pretrained("Gryphe/MythoMax-L2-13b")
-
-    prompt = request.prompt
-    inputs = tokenizer(prompt, return_tensors="pt")
-
-    # Generate
-    generate_ids = model.generate(inputs.input_ids, max_length=30)
-    result = tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-
-    return {
-        "code": 0,
-        "message": "对话成功",
-        "data": {
-            "response": result,
-            "history": []
+        return {
+            "code": 0,
+            "message": "对话成功",
+            "data": result
         }
-    }
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Gryphe/MythoMax-L2-13b对话生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gryphe/MythoMax-L2-13b对话生成失败: {str(e)}")
     
+@router.get("/uncensored/status")
+async def uncensored_status(background_tasks: BackgroundTasks):
+    """
+    检查Gryphe/MythoMax-L2-13b模型加载状态
+    """
+    status_info = get_uncensored_status()
+
+    # 尝试触发模型加载（如果尚未加载）
+    if status_info["status"] == "not_loaded":
+        from app.services.uncensored_service import load_uncensored_model
+        background_tasks.add_task(load_uncensored_model)
+        status_info["status"] = "loading"
+
+    return status_info

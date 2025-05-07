@@ -847,7 +847,9 @@ async def chat_with_uncensored(request: ChatRequest):
     return {
         "code": 0,
         "message": "对话成功",
-        "data": result
+        "data": {
+            "response": result,
+            "history": []
+        }
     }
-    
     

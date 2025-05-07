@@ -92,7 +92,7 @@ def chat_with_uncensored(prompt: str):
 
     # move inputs to cuda
     inputs = tokenizer(prompt, return_tensors="pt")
-    inputs = inputs.to(device)
+    inputs = inputs.to("cuda")
     
     # Generate
     generate_ids = model.generate(inputs.input_ids, max_length=2048)

@@ -54,17 +54,17 @@ def load_uncensored_model():
         logger.info("开始加载Gryphe/MythoMax-L2-13b模型...")
 
         # 使用量化配置减少内存占用
-        # quantization_config = BitsAndBytesConfig(
-        #     load_in_8bit=True,
-        #     llm_int8_threshold=6.0,
-        #     llm_int8_has_fp16_weight=False
-        # )
+        quantization_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=6.0,
+            llm_int8_has_fp16_weight=False
+        )
 
         model = LlamaForCausalLM.from_pretrained(
             model_name,
             trust_remote_code=True,
             device_map=device,
-            # quantization_config=quantization_config
+            quantization_config=quantization_config
         )
         tokenizer = AutoTokenizer.from_pretrained(
             model_name,

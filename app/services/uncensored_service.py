@@ -40,7 +40,7 @@ def load_uncensored_model():
     """
     global model, tokenizer, loading, device
 
-    model_name = "Gryphe/MythoMax-L2-13b"
+    model_name = "TheBloke/chronos-hermes-13B-GPTQ"
 
     # 避免并发初始化
     if loading:
@@ -54,17 +54,17 @@ def load_uncensored_model():
         logger.info("开始加载Gryphe/MythoMax-L2-13b模型...")
 
         # 使用量化配置减少内存占用
-        quantization_config = BitsAndBytesConfig(
-            load_in_8bit=True,
-            llm_int8_threshold=6.0,
-            llm_int8_has_fp16_weight=False
-        )
+        # quantization_config = BitsAndBytesConfig(
+        #     load_in_8bit=True,
+        #     llm_int8_threshold=6.0,
+        #     llm_int8_has_fp16_weight=False
+        # )
 
         model = LlamaForCausalLM.from_pretrained(
             model_name,
             trust_remote_code=True,
             device_map=device,
-            quantization_config=quantization_config
+            # quantization_config=quantization_config
         )
         tokenizer = AutoTokenizer.from_pretrained(
             model_name,

@@ -95,7 +95,15 @@ async def chat_with_uncensored(prompt: str):
     inputs = inputs.to("cuda")
     
     # 生成回复
-    generate_ids = model.generate(inputs.input_ids, max_length=2048)
+    generate_ids = model.generate(
+        inputs.input_ids, 
+        max_new_tokens=350, 
+        do_sample=True, 
+        repetition_penalty=1.4, 
+        temperature=0.35, 
+        top_p=0.75, 
+        top_k=40
+    )
     result = tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 
     return {

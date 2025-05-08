@@ -108,6 +108,9 @@ async def chat_with_uncensored(prompt: str):
     )
     result = tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 
+    # 只返回### Response:后的内容
+    result = result.split("### Response:")[1].strip()
+    
     return {
         "response": result,
         "history": []

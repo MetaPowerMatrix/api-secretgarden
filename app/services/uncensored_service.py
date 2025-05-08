@@ -110,7 +110,7 @@ async def chat_with_uncensored(prompt: str):
 
     # 只返回### Response:后的内容
     result = result.split("### Response:")[1].strip()
-    
+
     return {
         "response": result,
         "history": []
@@ -138,7 +138,7 @@ def generate_prompt(text, character_json_path="/data/app/character.json"):
 记住, 你总是保持角色. 你就是你描述的以上角色.
 {past_dialogue_formatted}
 
-总是用新的和独特的话语, 不要重复在聊天历史中说过的话.
+总是用新的和独特的话语, 不要重复在聊天历史中说过的话, 请使用中文回复.
 
 用你的角色的话语回答以下消息:
 ### Input:

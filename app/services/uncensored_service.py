@@ -3,6 +3,7 @@ import traceback
 import torch
 from fastapi import HTTPException
 from transformers import AutoTokenizer, LlamaForCausalLM, BitsAndBytesConfig
+import json
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ async def chat_with_uncensored(prompt: str):
         raise HTTPException(status_code=500, detail="无法加载Gryphe/MythoMax-L2-13b模型")
 
     # 将输入移动到CUDA设备
+    prompt = generate_prompt(prompt)
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = inputs.to("cuda")
     
@@ -111,3 +113,32 @@ async def chat_with_uncensored(prompt: str):
         "history": []
     }
 
+def generate_prompt(text, character_json_path="/data/app/character.json"):
+    with open(character_json_path, 'r') as f:
+        character_data = json.load(f)
+
+    name = character_data.get('name', '')
+    background = character_data.get('description', '')
+    personality = character_data.get('personality', '')
+    circumstances = character_data.get('world_scenario', '')
+    common_greeting = character_data.get('first_mes', '')
+    past_dialogue = character_data.get('mes_example', '')
+    past_dialogue_formatted = past_dialogue
+
+    return f"""### Instruction:
+扮演一个角色, 角色描述如下:
+{"你的名字是: " + name + "." if name else ""}
+{"你的背景故事和历史是: " + background if background else ""}
+{"你的性格是: " + personality if personality else ""}
+{"你的当前处境和情况是: " + circumstances if circumstances else ""}
+{"你的常用问候是: " + common_greeting if common_greeting else ""}
+记住, 你总是保持角色. 你就是你描述的以上角色.
+{past_dialogue_formatted}
+
+总是用新的和独特的话语, 不要重复在聊天历史中说过的话.
+
+用你的角色的话语回答以下消息:
+### Input:
+{text}
+### Response:
+{name}:"""

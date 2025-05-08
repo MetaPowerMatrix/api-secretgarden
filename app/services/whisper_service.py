@@ -121,7 +121,7 @@ async def transcribe_audio(audio_file_path, language="zh"):
         if torch.cuda.is_available():
             # 确保数据类型匹配模型
             dtype = whisper_model.dtype  # 获取模型的数据类型
-            inputs = {k: v.to("cuda").to(dtype) for k, v in inputs.items()}
+            inputs = {k: v.to("cuda:5").to(dtype) for k, v in inputs.items()}
         
         # 使用模型生成转录
         with torch.no_grad():

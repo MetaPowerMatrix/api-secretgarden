@@ -46,7 +46,7 @@ def load_model():
         logger.info(f"可用 GPU 数量: {n_gpus}")
         
         # 确定设备和数据类型
-        device_map = "cuda:5" if n_gpus >= 1 else "cpu"
+        device_map = "cuda:0" if n_gpus >= 1 else "cpu"
         torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         
         # 加载处理器
@@ -121,7 +121,7 @@ async def transcribe_audio(audio_file_path, language="zh"):
         if torch.cuda.is_available():
             # 确保数据类型匹配模型
             dtype = whisper_model.dtype  # 获取模型的数据类型
-            inputs = {k: v.to("cuda:5").to(dtype) for k, v in inputs.items()}
+            inputs = {k: v.to("cuda:0").to(dtype) for k, v in inputs.items()}
         
         # 使用模型生成转录
         with torch.no_grad():

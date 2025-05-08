@@ -40,7 +40,7 @@ def load_uncensored_model():
     """
     global model, tokenizer, loading, device
 
-    model_name = "TheBloke/Chronos-Hermes-13b-v2-GGUF"
+    model_name = "Austism/chronos-hermes-13b"
 
     # 避免并发初始化
     if loading:

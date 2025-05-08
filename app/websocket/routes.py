@@ -223,7 +223,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 line_number = exc_tb.tb_lineno
                 logger.error(f"AI后端连接错误: {str(e)}, 出错行号: {line_number}")
-                await websocket.close()
+                # await websocket.close()
             finally:
                 # 清理AI后端连接
                 ai_backend = None

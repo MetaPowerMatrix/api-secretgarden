@@ -41,7 +41,8 @@ def load_model():
         model_id = "openai/whisper-large-v3"
         
         # 获取 GPU 信息
-        n_gpus = torch.cuda.device_count()
+        # n_gpus = torch.cuda.device_count()
+        n_gpus = 1
         logger.info(f"可用 GPU 数量: {n_gpus}")
         
         # 确定设备和数据类型

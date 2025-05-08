@@ -46,7 +46,7 @@ def load_model():
         logger.info(f"可用 GPU 数量: {n_gpus}")
         
         # 确定设备和数据类型
-        device_map = "cuda:1" if n_gpus >= 1 else "cpu"
+        device_map = "cuda:5" if n_gpus >= 1 else "cpu"
         torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         
         # 加载处理器

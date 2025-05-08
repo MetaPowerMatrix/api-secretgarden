@@ -81,20 +81,20 @@ def load_uncensored_model():
         loading = False
         return False
 
-def chat_with_uncensored(prompt: str):
+async def chat_with_uncensored(prompt: str):
     """
-    与Gryphe/MythoMax-L2-13b模型进行对话
+    与Gryphe/MythoMax-L2-13b模型进行对话（异步版本）
     """
     global model, tokenizer, device
 
     if not load_uncensored_model():
         raise HTTPException(status_code=500, detail="无法加载Gryphe/MythoMax-L2-13b模型")
 
-    # move inputs to cuda
+    # 将输入移动到CUDA设备
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = inputs.to("cuda")
     
-    # Generate
+    # 生成回复
     generate_ids = model.generate(inputs.input_ids, max_length=2048)
     result = tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 

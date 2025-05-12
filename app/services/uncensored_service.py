@@ -94,6 +94,7 @@ async def chat_with_uncensored(prompt: str):
 
     # 将输入移动到CUDA设备
     prompt = generate_prompt(prompt)
+    print("final instruction: ", prompt)
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = inputs.to("cuda")
     
@@ -109,8 +110,8 @@ async def chat_with_uncensored(prompt: str):
     )
     result = tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 
-    # 只返回### Response:后的内容
-    result = result.split("### Response:")[1].strip()
+    # 只返回### 角色消息:后的内容
+    result = result.split("### 角色消息:")[1].strip()
 
     return {
         "response": result,
@@ -142,7 +143,7 @@ def generate_prompt(text, character_json_path="/data/app/character.json"):
 总是用新的和独特的话语, 不要重复在聊天历史中说过的话, 请使用中文回复.
 
 用你的角色的话语回答以下消息，记住请使用中文回复:
-### Input:
+### 用户消息:
 {text}
-### Response:
+### 角色消息:
 {name}:"""

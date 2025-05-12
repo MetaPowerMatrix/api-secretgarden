@@ -142,7 +142,7 @@ def generate_prompt(text, character_json_path="/data/app/character.json"):
 
 总是用新的和独特的话语, 不要重复在聊天历史中说过的话, 请使用中文回复.
 
-用你的角色的话语回答以下消息，记住请使用中文回复:
+用中文和你的角色性格相符的话回答以下消息，记住，请使用中文回复:
 ### 用户消息:
 {text}
 ### 角色消息:

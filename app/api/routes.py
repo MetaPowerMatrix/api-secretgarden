@@ -16,7 +16,7 @@ import tempfile
 import librosa
 import soundfile as sf
 from base64 import b64encode
-from qiniu import QiniuMacAuth, Sms
+from qiniu import Auth, Sms
 from dotenv import load_dotenv
 
 # 导入模型服务
@@ -891,7 +891,7 @@ async def send_order_sms(request: SMSRequest):
             raise HTTPException(status_code=500, detail="缺少七牛云配置信息，请检查.env文件")
             
         # 初始化七牛云SMS客户端
-        q = QiniuMacAuth(access_key, secret_key)
+        q = Auth(access_key, secret_key)
         sms = Sms(q)
         
         # 构建短信参数

@@ -16,6 +16,7 @@ import tempfile
 import librosa
 import soundfile as sf
 from base64 import b64encode
+from qiniu import Auth, Sms
 
 # 导入模型服务
 from app.services.whisper_service import transcribe_audio, get_model_status as get_whisper_status, load_model as load_whisper_model
@@ -864,3 +865,58 @@ async def uncensored_status(background_tasks: BackgroundTasks):
         status_info["status"] = "loading"
 
     return status_info
+
+class SMSRequest(BaseModel):
+    phone: str
+    order_id: str
+    product_name: str
+    customer_name: str
+
+@router.post("/send/order-sms")
+async def send_order_sms(request: SMSRequest):
+    """
+    发送新订单短信通知给客服
+    """
+    try:
+        # 七牛云配置
+        access_key = os.getenv("QINIU_ACCESS_KEY")
+        secret_key = os.getenv("QINIU_SECRET_KEY")
+        template_id = os.getenv("QINIU_SMS_TEMPLATE_ID")  # 短信模板ID
+        
+        if not all([access_key, secret_key, template_id]):
+            raise HTTPException(status_code=500, detail="缺少七牛云配置信息")
+            
+        # 初始化七牛云SMS客户端
+        q = Auth(access_key, secret_key)
+        sms = Sms(q)
+        
+        # 构建短信参数
+        params = {
+            # "order_id": request.order_id,
+            # "product_name": request.product_name,
+            # "customer_name": request.customer_name
+        }
+        
+        # 发送短信
+        ret, info = sms.send_message(
+            template_id=template_id,
+            mobiles=[request.phone],
+            parameters=params
+        )
+        
+        if info.status_code != 200:
+            logger.error(f"发送短信失败: {info.error}")
+            raise HTTPException(status_code=500, detail=f"发送短信失败: {info.error}")
+            
+        return {
+            "code": 0,
+            "message": "短信发送成功",
+            "data": {
+                "request_id": ret.get("request_id"),
+                "message_id": ret.get("message_id")
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"发送短信时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"发送短信时出错: {str(e)}")

@@ -16,7 +16,7 @@ import tempfile
 import librosa
 import soundfile as sf
 from base64 import b64encode
-from qiniu import Auth, Sms
+from qiniu import QiniuMacAuth, Sms
 from dotenv import load_dotenv
 
 # 导入模型服务
@@ -886,14 +886,19 @@ async def send_order_sms(request: SMSRequest):
         access_key = os.getenv("QINIU_ACCESS_KEY")
         secret_key = os.getenv("QINIU_SECRET_KEY")
         template_id = os.getenv("QINIU_SMS_TEMPLATE_ID")
+        print("access_key: ", access_key)
+        print("secret_key: ", secret_key)
+        print("template_id: ", template_id)
         
         if not all([access_key, secret_key, template_id]):
             raise HTTPException(status_code=500, detail="缺少七牛云配置信息，请检查.env文件")
             
         # 初始化七牛云SMS客户端
-        q = Auth(access_key, secret_key)
+        q = QiniuMacAuth(access_key, secret_key)
+        print("q: ", q)
         sms = Sms(q)
-        
+        print("sms: ", sms)
+
         # 构建短信参数
         params = {
             # "order_id": request.order_id,

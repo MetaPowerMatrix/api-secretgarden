@@ -17,6 +17,7 @@ import librosa
 import soundfile as sf
 from base64 import b64encode
 from qiniu import Auth, Sms
+from dotenv import load_dotenv
 
 # 导入模型服务
 from app.services.whisper_service import transcribe_audio, get_model_status as get_whisper_status, load_model as load_whisper_model
@@ -31,6 +32,9 @@ os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# 加载.env文件
+load_dotenv()
 
 class Message(BaseModel):
     content: str
@@ -878,13 +882,13 @@ async def send_order_sms(request: SMSRequest):
     发送新订单短信通知给客服
     """
     try:
-        # 七牛云配置
+        # 从.env文件读取七牛云配置
         access_key = os.getenv("QINIU_ACCESS_KEY")
         secret_key = os.getenv("QINIU_SECRET_KEY")
-        template_id = os.getenv("QINIU_SMS_TEMPLATE_ID")  # 短信模板ID
+        template_id = os.getenv("QINIU_SMS_TEMPLATE_ID")
         
         if not all([access_key, secret_key, template_id]):
-            raise HTTPException(status_code=500, detail="缺少七牛云配置信息")
+            raise HTTPException(status_code=500, detail="缺少七牛云配置信息，请检查.env文件")
             
         # 初始化七牛云SMS客户端
         q = Auth(access_key, secret_key)

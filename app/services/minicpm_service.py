@@ -96,14 +96,14 @@ async def voice_chat(audio_input, ref_audio, output_audio_path, session_id, max_
     
     try:
         # ref_audio, _ = librosa.load(ref_audio, sr=16000, mono=True)
-        sys_prompt = model.get_sys_prompt(ref_audio=None, mode='audio_roleplay', language='zh')
-        print("sys_prompt: ", sys_prompt)
+        # sys_prompt = model.get_sys_prompt(ref_audio=None, mode='audio_roleplay', language='zh')
+        # print("sys_prompt: ", sys_prompt)
 
         # 获取历史聊天记录
         history = cache.get_messages(session_id)
 
         user_audio, _ = librosa.load(audio_input, sr=16000, mono=True)
-        user_question = {'role': 'user', 'content': [sys_prompt, user_audio]}
+        user_question = {'role': 'user', 'content': [user_audio]}
         # msgs.extend(history)  # 将历史记录添加到当前消息中
         msgs = history + [user_question]
 

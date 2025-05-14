@@ -89,7 +89,11 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                             try:
                                 data = json.loads(message["text"])
                                 
-                                if "session_id" in data and "type" in data:
+                                if "type" in data and data.get("type") == "heartbeat":
+                                    # 回复心跳确认
+                                    await websocket.send_text(json.dumps({"type": "heartbeat_ack"}))
+                                    logger.info("收到心跳，回复心跳确认")
+                                elif "session_id" in data and "type" in data and data.get("type") == "text":
                                     session_id = str(uuid.UUID(data["session_id"]))
                                     
                                     # 查找对应的前端客户端
@@ -100,16 +104,10 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                             frontend_ws = frontend_clients[client_id]
                                             
                                             # 转发消息给前端
-                                            if data["type"] == "text":
-                                                # 文本消息
-                                                await frontend_ws.send_text(json.dumps({
-                                                    "type": "text",
-                                                    "content": data["content"]
-                                                }))
-                                            elif data.get("type") == "heartbeat":
-                                                # 回复心跳确认
-                                                await websocket.send_text(json.dumps({"type": "heartbeat_ack"}))
-                                                            
+                                            await frontend_ws.send_text(json.dumps({
+                                                "type": "text",
+                                                "content": data["content"]
+                                            }))
                                             logger.info(f"已将AI消息转发至前端客户端 {client_id}")
                                         else:
                                             logger.warning(f"找不到客户端ID: {client_id}")

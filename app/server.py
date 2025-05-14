@@ -2,6 +2,8 @@ import logging
 from fastapi import FastAPI
 from app.config import settings
 from app.services import init_services
+import os
+from dotenv import load_dotenv
 
 # 配置日志
 logging.basicConfig(
@@ -14,6 +16,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("websocket")
 
+# 加载.env文件
+load_dotenv()
+
 # 创建WebSocket应用
 ws_app = FastAPI(
     title="WebSocket Server",
@@ -21,7 +26,7 @@ ws_app = FastAPI(
     version="0.1.0",
 )
 # 根据环境变量决定使用哪种通信方式
-COMMUNICATION_MODE = os.environ.get("COMMUNICATION_MODE", "websocket").lower()
+COMMUNICATION_MODE = os.getenv("COMMUNICATION_MODE", "websocket").lower()
 
 if COMMUNICATION_MODE == "mqtt":
     from app.mqtt.routes import router as mqtt_router

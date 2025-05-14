@@ -1,7 +1,6 @@
 import logging
 from fastapi import FastAPI
 from app.config import settings
-from app.websocket.routes import router as ws_router
 from app.services import init_services
 from app.websocket.routes import active_connections
 
@@ -22,38 +21,25 @@ ws_app = FastAPI(
     description="WebSocket服务器，用于音频数据代理",
     version="0.1.0",
 )
+# 根据环境变量决定使用哪种通信方式
+COMMUNICATION_MODE = os.environ.get("COMMUNICATION_MODE", "websocket").lower()
 
-# 注册WebSocket路由
-ws_app.include_router(ws_router, prefix=settings.WEBSOCKET_PATH)
+if COMMUNICATION_MODE == "mqtt":
+    from app.mqtt.routes import router as mqtt_router
+    ws_app.include_router(mqtt_router)
+    print("已启用MQTT通信模式，前端可连接到 /mqtt_proxy 端点")
+else:
+    from app.websocket.routes import router as ws_router
+    ws_app.include_router(ws_router, prefix=settings.WEBSOCKET_PATH)
+    print("已启用WebSocket通信模式，前端可连接到 /proxy 端点")
 
 @ws_app.on_event("startup")
 async def startup_event():
-    """应用启动时执行的操作"""
     logger.info("Starting WebSocket server...")
     # 初始化服务目录
     init_services()
-    
     logger.info(f"WebSocket server running on port {settings.WEBSOCKET_PORT}")
 
 @ws_app.on_event("shutdown")
 async def shutdown_event():
-    """应用关闭时执行的操作"""
-    # 关闭所有连接
-    for connection in active_connections:
-        await connection.close()
     logger.info("Shutting down WebSocket server...")
-
-# def main():
-#     """WebSocket服务器主入口"""
-#     uvicorn.run(
-#         "app.server:ws_app",
-#         host="0.0.0.0",
-#         port=settings.WEBSOCKET_PORT,
-#         reload=settings.APP_ENV == "development",
-#         timeout_keep_alive=120,        # 将保持连接活跃的超时时间设为120秒
-#         ws_ping_interval=30,           # 将WebSocket ping间隔设为30秒
-#         ws_ping_timeout=30,            # 将WebSocket ping超时设为30秒
-#     )
-
-# if __name__ == "__main__":
-#     main()

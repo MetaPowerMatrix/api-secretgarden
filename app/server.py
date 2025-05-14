@@ -35,7 +35,7 @@ if COMMUNICATION_MODE == "mqtt":
 else:
     from app.websocket.routes import router as ws_router
     ws_app.include_router(ws_router, prefix=settings.WEBSOCKET_PATH)
-    print("已启用WebSocket通信模式，前端可连接到 /proxy 端点")
+    print("已启用WebSocket通信模式，前端可连接到 /ws/proxy 端点")
 
 @ws_app.on_event("startup")
 async def startup_event():

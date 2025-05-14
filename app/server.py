@@ -2,7 +2,6 @@ import logging
 from fastapi import FastAPI
 from app.config import settings
 from app.services import init_services
-from app.websocket.routes import active_connections
 
 # 配置日志
 logging.basicConfig(

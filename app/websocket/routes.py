@@ -132,7 +132,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                 try:
                                     # 将字节转换为UUID字符串
                                     session_id = str(uuid.UUID(bytes=session_id_bytes))
-                                    logger.info(f"接收到AI后端音频数据: {len(audio_data)} 字节, 会话ID: {session_id}")
+                                    # logger.info(f"接收到AI后端音频数据: {len(audio_data)} 字节, 会话ID: {session_id}")
                                         
                                     # 查找对应的前端客户端
                                     if session_id in session_to_client:
@@ -143,7 +143,7 @@ async def proxy_websocket_endpoint(websocket: WebSocket):
                                             
                                             # 直接转发音频数据到前端
                                             await frontend_ws.send_bytes(audio_data)
-                                            logger.info(f"已将AI处理的音频数据转发至前端客户端 {client_id}")
+                                            # logger.info(f"已将AI处理的音频数据转发至前端客户端 {client_id}")
                                         else:
                                             logger.warning(f"找不到客户端ID: {client_id}")
                                     else:
